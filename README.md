@@ -72,6 +72,11 @@ Add a brand by copying an entry and filling in its values. A commented-out titra
 
 All ranges live in the `FIELDS` table at the top of the script in `index.html`, so they're easy to adjust.
 
+## Owner tools
+
+- `tools/profit-planner.html`: costs, profit per member, members needed to break even, and a fair chemical pricing guide. Numbers are saved on the device.
+- `NEXT-STEPS.md`: open decisions and missing pieces.
+
 ## Roadmap
 
 1. ✅ Reading entry + status

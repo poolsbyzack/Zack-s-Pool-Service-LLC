@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- ARTIFACT-START -->
+<title>App Profit Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Layout: results first (what the numbers mean), then the levers, then the pricing guide. Same palette as the pool app. */
+:root {
+  --bg: #EAF2F5;
+  --surface: #FFFFFF;
+  --ink: #0E2A36;
+  --muted: #557280;
+  --line: #CCDDE4;
+  --accent: #0B6E8F;
+  --accent-ink: #FFFFFF;
+  --good: #23855A;
+  --bad: #C2413A;
+  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0A1A21; --surface: #11262F; --ink: #E2EEF2; --muted: #8DA8B4; --line: #24424E;
+    --accent: #4BB6D6; --accent-ink: #062029; --good: #4CC283; --bad: #F06C60;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0A1A21; --surface: #11262F; --ink: #E2EEF2; --muted: #8DA8B4; --line: #24424E;
+  --accent: #4BB6D6; --accent-ink: #062029; --good: #4CC283; --bad: #F06C60;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.45;
+  padding-inline: 16px; padding-block: 20px 48px;
+}
+.wrap { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.1; margin: 0; text-wrap: balance; }
+h1 { font-size: 2rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.15rem; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 0.9rem; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.label { font-family: var(--font-display); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+
+.headline { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat .num { font-family: var(--font-display); font-weight: 700; font-size: 2.2rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.pos { color: var(--good); }
+.neg { color: var(--bad); }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--font-display); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+td.r, th.r { text-align: right; padding-right: 0; padding-left: 10px; white-space: nowrap; }
+tr.total td { font-weight: 700; border-bottom: 0; }
+
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 16px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-weight: 700; font-size: 0.95rem; }
+.field .hint { color: var(--muted); font-size: 0.85rem; }
+.input { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); min-height: 44px; overflow: hidden; }
+.input span { padding: 0 10px; color: var(--muted); }
+.input input { font: inherit; color: var(--ink); background: transparent; border: 0; min-height: 44px; width: 100%; min-width: 0; padding: 0 10px; font-variant-numeric: tabular-nums; }
+.input:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+details.panel > summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+details.panel > summary::-webkit-details-marker { display: none; }
+details.panel > summary::after { content: "Show"; color: var(--accent); font-weight: 700; font-size: 0.9rem; }
+details.panel[open] > summary::after { content: "Hide"; }
+
+.btn { font: inherit; font-weight: 700; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 10px; min-height: 44px; padding: 0 14px; cursor: pointer; align-self: flex-start; }
+.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.products { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.product { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.product .price strong { font-family: var(--font-display); font-size: 1.4rem; color: var(--accent); }
+ul.tips { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>App Profit Planner</h1>
+    <p class="muted">Change any number below and the totals update. Every default is an estimate to replace with your real costs.</p>
+  </header>
+
+  <section class="panel" aria-labelledby="result-title">
+    <h2 id="result-title">Each month</h2>
+    <div class="headline">
+      <div class="stat"><span class="label">Profit</span><span class="num" id="out-profit"></span></div>
+      <div class="stat"><span class="label">Per Premium member</span><span class="num" id="out-per"></span></div>
+      <div class="stat"><span class="label">Members to break even</span><span class="num" id="out-break"></span></div>
+    </div>
+    <p id="out-sentence"></p>
+  </section>
+
+  <section class="panel" aria-labelledby="breakdown-title">
+    <h2 id="breakdown-title">Where the money comes from</h2>
+    <div class="table-wrap"><table id="breakdown"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="scenario-title">
+    <h2 id="scenario-title">At different sizes</h2>
+    <p class="muted small">Basic customers who order delivery are scaled at the same ratio to Premium members as above.</p>
+    <div class="table-wrap"><table id="scenarios"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="in-sub">
+    <h2 id="in-sub">Premium subscription</h2>
+    <div class="fields">
+      <div class="field"><label for="price">Price per month</label><div class="input"><span>$</span><input id="price" type="number" step="0.5" min="0" inputmode="decimal"></div></div>
+      <div class="field"><label for="members">Premium members</label><div class="input"><input id="members" type="number" step="5" min="0" inputmode="numeric"></div></div>
+      <div class="field"><label for="photos">Photo readings per member</label><div class="input"><input id="photos" type="number" step="1" min="0" inputmode="numeric"><span>/mo</span></div><span class="hint">AI reading costs about 1¢ each.</span></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="in-del">
+    <h2 id="in-del">Chemical delivery</h2>
+    <div class="fields">
+      <div class="field"><label for="pdel">Deliveries per Premium member</label><div class="input"><input id="pdel" type="number" step="0.5" min="0" inputmode="decimal"><span>/mo</span></div></div>
+      <div class="field"><label for="basic">Basic customers who order</label><div class="input"><input id="basic" type="number" step="5" min="0" inputmode="numeric"></div></div>
+      <div class="field"><label for="bdel">Deliveries per Basic customer</label><div class="input"><input id="bdel" type="number" step="0.5" min="0" inputmode="decimal"><span>/mo</span></div></div>
+      <div class="field"><label for="fee">Delivery fee (Basic only)</label><div class="input"><span>$</span><input id="fee" type="number" step="1" min="0" inputmode="decimal"></div></div>
+      <div class="field"><label for="cost">Your chemical cost per order</label><div class="input"><span>$</span><input id="cost" type="number" step="1" min="0" inputmode="decimal"></div><span class="hint">What you pay your supplier.</span></div>
+      <div class="field"><label for="markup">Markup on chemicals</label><div class="input"><input id="markup" type="number" step="5" min="0" inputmode="decimal"><span>%</span></div><span class="hint">See the pricing guide below.</span></div>
+      <div class="field"><label for="mins">Minutes per stop</label><div class="input"><input id="mins" type="number" step="1" min="0" inputmode="numeric"><span>min</span></div><span class="hint">Lower when it's on your route anyway.</span></div>
+      <div class="field"><label for="wage">Your time is worth</label><div class="input"><span>$</span><input id="wage" type="number" step="5" min="0" inputmode="decimal"><span>/hr</span></div></div>
+      <div class="field"><label for="miles">Extra miles per stop</label><div class="input"><input id="miles" type="number" step="1" min="0" inputmode="decimal"><span>mi</span></div></div>
+      <div class="field"><label for="permile">Cost per mile</label><div class="input"><span>$</span><input id="permile" type="number" step="0.05" min="0" inputmode="decimal"></div><span class="hint">Gas and wear. The IRS rate is about $0.70.</span></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="in-strips">
+    <h2 id="in-strips">Test strips</h2>
+    <div class="fields">
+      <div class="field"><label for="bottles">Bottles per member</label><div class="input"><input id="bottles" type="number" step="0.05" min="0" inputmode="decimal"><span>/mo</span></div><span class="hint">Testing twice a week uses a 50-strip bottle in about 6 months (0.17).</span></div>
+      <div class="field"><label for="scost">Your cost per bottle</label><div class="input"><span>$</span><input id="scost" type="number" step="0.5" min="0" inputmode="decimal"></div></div>
+      <div class="field"><label for="sprice">Your price per bottle</label><div class="input"><span>$</span><input id="sprice" type="number" step="0.5" min="0" inputmode="decimal"></div></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="in-fixed">
+    <h2 id="in-fixed">Monthly running costs</h2>
+    <div class="fields">
+      <div class="field"><label for="hosting">Hosting and server</label><div class="input"><span>$</span><input id="hosting" type="number" step="5" min="0" inputmode="decimal"></div></div>
+      <div class="field"><label for="domain">Domain and email</label><div class="input"><span>$</span><input id="domain" type="number" step="1" min="0" inputmode="decimal"></div></div>
+      <div class="field"><label for="insurance">Extra insurance</label><div class="input"><span>$</span><input id="insurance" type="number" step="5" min="0" inputmode="decimal"></div><span class="hint">Placeholder until your agent quotes it.</span></div>
+      <div class="field"><label for="marketing">Marketing</label><div class="input"><span>$</span><input id="marketing" type="number" step="10" min="0" inputmode="decimal"></div></div>
+      <div class="field"><label for="other">Other</label><div class="input"><span>$</span><input id="other" type="number" step="5" min="0" inputmode="decimal"></div></div>
+    </div>
+  </section>
+
+  <details class="panel">
+    <summary><h2>Payment fees</h2></summary>
+    <div class="fields">
+      <div class="field"><label for="cardpct">Card fee</label><div class="input"><input id="cardpct" type="number" step="0.1" min="0" inputmode="decimal"><span>%</span></div></div>
+      <div class="field"><label for="cardfix">Plus per charge</label><div class="input"><span>$</span><input id="cardfix" type="number" step="0.05" min="0" inputmode="decimal"></div></div>
+      <div class="field"><label for="billpct">Subscription billing fee</label><div class="input"><input id="billpct" type="number" step="0.1" min="0" inputmode="decimal"><span>%</span></div></div>
+    </div>
+    <p class="muted small">Stripe's standard US rate is 2.9% + $0.30 per card charge, plus 0.7% on subscription billing. Disputes cost $15 each.</p>
+  </details>
+
+  <button class="btn" type="button" id="reset">Reset to the starting estimates</button>
+
+  <section class="panel" aria-labelledby="guide-title">
+    <h2 id="guide-title">Fair chemical pricing</h2>
+    <p>Customers compare your price to the store shelf, not to your cost. Price against the shelf, then check that the markup covers your time.</p>
+    <div class="products">
+      <div class="product">
+        <h3>Liquid chlorine, 1 gal</h3>
+        <p class="price">Suggested delivered: <strong>$7–9</strong></p>
+        <p class="small">Store shelf $6–8 (Walmart $5.97, Lowe's $7.98, Leslie's about $7.50 in a 4-pack). Pros pay $2–5, lowest in Florida.</p>
+      </div>
+      <div class="product">
+        <h3>Muriatic acid, 1 gal</h3>
+        <p class="price">Suggested delivered: <strong>$11–14</strong></p>
+        <p class="small">Store shelf about $10 (Walmart $9.97). Check the strength: some jugs are 14.5%, not 31.45%.</p>
+      </div>
+      <div class="product">
+        <h3>Test strips, 50 ct</h3>
+        <p class="price">Suggested: <strong>$12–16</strong></p>
+        <p class="small">Store shelf $8–15 depending on brand.</p>
+      </div>
+    </div>
+    <h3>Markup by type of product</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Type</th><th>Examples</th><th class="r">Markup on cost</th></tr></thead>
+        <tbody>
+          <tr><td>Heavy, price-checked items</td><td>Liquid chlorine, salt, baking soda</td><td class="r">25–40%</td></tr>
+          <tr><td>Everyday treatments</td><td>Muriatic acid, shock, soda ash</td><td class="r">35–50%</td></tr>
+          <tr><td>Specialty, bought rarely</td><td>Stabilizer, calcium, test strips</td><td class="r">50–80%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>Markup isn't the same as margin</h3>
+    <p class="muted small">Markup is added on top of your cost. Margin is the share of the price you keep. Pool stores aim for about 40% margin overall, which is a 67% markup. Distributors run about 30% margin.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Markup on cost</th><th class="r">Margin you keep</th><th class="r">$10 cost sells for</th></tr></thead>
+        <tbody id="margin-table"></tbody>
+      </table>
+    </div>
+    <h3>Rules that keep prices feeling fair</h3>
+    <ul class="tips">
+      <li>Premium members pay about the store shelf price, with free delivery. That's the easy sell: same price, no trip.</li>
+      <li>Basic customers pay the same shelf price plus the delivery fee. Don't add both a big markup and a fee.</li>
+      <li>Keep heavy items like chlorine and salt within about 10–15% of the local shelf. People know those prices.</li>
+      <li>Take more margin on items people buy rarely and don't price-check, like stabilizer and test strips.</li>
+      <li>Recheck shelf prices each spring. Chlorine prices moved a lot during the 2026 shortage.</li>
+    </ul>
+    <p class="muted small">Sources:
+      <a href="https://www.walmart.com/ip/Pool-Essentials-Chlorinating-Liquid-for-Swimming-Pools-1-Gallon/48938023">Walmart chlorine</a>,
+      <a href="https://www.lowes.com/pd/Pool-Essentials-1-Gallon-Liquid-Pool-Chlorine/5001527059">Lowe's chlorine</a>,
+      <a href="https://lesliespool.com/pool-liquid-chlorine-4-pack-of-1-gallon-bottles/14239.html">Leslie's 4-pack</a>,
+      <a href="https://pooldial.com/resources/articles/business/liquid-chlorine-cost-by-state">pro chlorine cost by state</a>,
+      <a href="https://www.walmart.com/ip/20531315">Walmart muriatic acid</a>,
+      <a href="https://www.aquamagazine.com/retail/article/15118190/keeping-pool-chemical-sales-away-from-big-box-stores">pool retail margins</a>,
+      <a href="https://thepoolfactory.com/products/pool-check-6in1-chlorine-test-kit">test strips</a>,
+      <a href="https://erpresearch.com/erp-add-ons/billing-subscriptions/stripe-billing/pricing">Stripe Billing</a>.
+    </p>
+  </section>
+</div>
+
+<script>
+// Starting estimates. Every one is meant to be replaced with real numbers.
+const DEFAULTS = {
+  price: 4.99, members: 50, photos: 8,
+  pdel: 2, basic: 20, bdel: 1, fee: 10, cost: 20, markup: 35,
+  mins: 10, wage: 30, miles: 3, permile: 0.70,
+  bottles: 0.17, scost: 8, sprice: 14,
+  hosting: 25, domain: 5, insurance: 50, marketing: 100, other: 0,
+  cardpct: 2.9, cardfix: 0.30, billpct: 0.7,
+};
+const PHOTO_COST = 0.01;
+const STORE_KEY = "profitPlanner.v1";
+
+let v = load();
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) return Object.assign({}, DEFAULTS, JSON.parse(raw));
+  } catch (e) { /* storage unavailable */ }
+  return Object.assign({}, DEFAULTS);
+}
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(v)); } catch (e) { /* storage unavailable */ }
+}
+
+function money(n) {
+  const sign = n < 0 ? "−" : "";
+  return sign + "$" + Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function money0(n) {
+  const sign = n < 0 ? "−" : "";
+  return sign + "$" + Math.round(Math.abs(n)).toLocaleString();
+}
+
+function cardFee(amount) {
+  return amount > 0 ? amount * v.cardpct / 100 + v.cardfix : 0;
+}
+
+// Monthly numbers for one Premium member, one Basic ordering customer, and fixed costs.
+function model() {
+  const stop = (v.mins / 60) * v.wage + v.miles * v.permile;
+  const sell = v.cost * (1 + v.markup / 100);
+  const chemMargin = sell - v.cost;
+
+  const premium = {
+    subscription: v.price,
+    subFees: -(cardFee(v.price) + v.price * v.billpct / 100),
+    chemicals: v.pdel * chemMargin,
+    orderFees: -v.pdel * cardFee(sell),
+    stops: -v.pdel * stop,
+    strips: v.bottles * (v.sprice - v.scost), // bottles ride along on delivery orders
+    photos: -v.photos * PHOTO_COST,
+  };
+  const basic = {
+    chemicals: v.bdel * chemMargin,
+    fees: v.bdel * v.fee,
+    orderFees: -v.bdel * cardFee(sell + v.fee),
+    stops: -v.bdel * stop,
+  };
+  const sum = o => Object.values(o).reduce((a, b) => a + b, 0);
+  const fixed = v.hosting + v.domain + v.insurance + v.marketing + v.other;
+  return { premium, basic, perPremium: sum(premium), perBasic: sum(basic), fixed, stop };
+}
+
+function profitAt(m, members, basicCount) {
+  return members * m.perPremium + basicCount * m.perBasic - m.fixed;
+}
+
+function render() {
+  const m = model();
+  const profit = profitAt(m, v.members, v.basic);
+  const set = (id, text, cls) => { const el = document.getElementById(id); el.textContent = text; el.className = "num" + (cls ? " " + cls : ""); };
+  set("out-profit", money0(profit), profit >= 0 ? "pos" : "neg");
+  set("out-per", money(m.perPremium), m.perPremium >= 0 ? "pos" : "neg");
+  const needed = m.perPremium > 0 ? Math.max(0, Math.ceil((m.fixed - v.basic * m.perBasic) / m.perPremium)) : null;
+  set("out-break", needed === null ? "Never" : needed.toLocaleString());
+
+  document.getElementById("out-sentence").textContent = needed === null
+    ? "Each Premium member costs more than they bring in. Raise the price or markup, or cut the cost per stop."
+    : `With ${v.basic} Basic customers ordering, ${needed} Premium member${needed === 1 ? "" : "s"} cover${needed === 1 ? "s" : ""} your ${money0(m.fixed)} in monthly running costs. ` +
+      `Each delivery stop costs you about ${money(m.stop)} in time and gas.`;
+
+  const p = m.premium, b = m.basic;
+  const rows = [
+    ["Premium subscriptions", p.subscription * v.members],
+    ["Payment fees on subscriptions", p.subFees * v.members],
+    ["Chemical markup, Premium orders", p.chemicals * v.members],
+    ["Chemical markup, Basic orders", b.chemicals * v.basic],
+    ["Delivery fees, Basic orders", b.fees * v.basic],
+    ["Payment fees on orders", p.orderFees * v.members + b.orderFees * v.basic],
+    ["Delivery time and gas", p.stops * v.members + b.stops * v.basic],
+    ["Test strip sales, after cost", p.strips * v.members],
+    ["Photo reading (AI)", p.photos * v.members],
+    ["Running costs", -m.fixed],
+  ];
+  document.getElementById("breakdown").innerHTML =
+    `<thead><tr><th>Item</th><th class="r">Per month</th></tr></thead><tbody>` +
+    rows.map(([k, n]) => `<tr><td>${k}</td><td class="r ${n < 0 ? "neg" : ""}">${money0(n)}</td></tr>`).join("") +
+    `<tr class="total"><td>Profit</td><td class="r ${profit < 0 ? "neg" : "pos"}">${money0(profit)}</td></tr></tbody>`;
+
+  const ratio = v.members > 0 ? v.basic / v.members : 0;
+  const sizes = [25, 50, 100, 250, 500];
+  document.getElementById("scenarios").innerHTML =
+    `<thead><tr><th>Premium members</th><th class="r">Basic ordering</th><th class="r">Profit / month</th><th class="r">Per year</th></tr></thead><tbody>` +
+    sizes.map(n => {
+      const bc = Math.round(n * ratio);
+      const pr = profitAt(m, n, bc);
+      return `<tr><td>${n}</td><td class="r">${bc}</td><td class="r ${pr < 0 ? "neg" : "pos"}">${money0(pr)}</td><td class="r ${pr < 0 ? "neg" : ""}">${money0(pr * 12)}</td></tr>`;
+    }).join("") + `</tbody>`;
+}
+
+function fillInputs() {
+  Object.keys(DEFAULTS).forEach(k => { document.getElementById(k).value = v[k]; });
+}
+
+Object.keys(DEFAULTS).forEach(k => {
+  document.getElementById(k).addEventListener("input", e => {
+    const n = Number(e.target.value);
+    v[k] = e.target.value.trim() === "" || !Number.isFinite(n) ? 0 : n;
+    save();
+    render();
+  });
+});
+document.getElementById("reset").addEventListener("click", () => {
+  v = Object.assign({}, DEFAULTS);
+  save();
+  fillInputs();
+  render();
+});
+
+document.getElementById("margin-table").innerHTML = [25, 35, 50, 67, 100].map(mk =>
+  `<tr><td>${mk}%</td><td class="r">${Math.round(mk / (100 + mk) * 100)}%</td><td class="r">${money(10 * (1 + mk / 100))}</td></tr>`).join("");
+
+fillInputs();
+render();
+</script>
+<!-- ARTIFACT-END -->
+</body>
+</html>

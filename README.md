@@ -6,7 +6,7 @@ Open `index.html` in a browser. There's no build step. On a phone, use **Share �
 
 ## What it does today
 
-- Big number boxes with − / + buttons and tap-to-fill chips that match common test strip color steps
+- Big number boxes with a slider to get close and − / + buttons to fine-tune (color-block strips use tap-to-pick blocks instead)
 - Sanitizer type (chlorine or saltwater) and pool size
 - Each reading shows a status (Very low → Ideal → Very high), a range bar and a plain-language explanation
 - A summary at the top lists what needs attention first

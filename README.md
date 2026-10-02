@@ -75,7 +75,8 @@ All ranges live in the `FIELDS` table at the top of the script in `index.html`, 
 ## Owner tools
 
 - `tools/profit-planner.html`: costs, profit per member, members needed to break even, and a fair chemical pricing guide. Numbers are saved on the device.
-- `NEXT-STEPS.md`: open decisions and missing pieces.
+- `planning/business-plan.md`: what's been decided in brainstorming.
+- `planning/open-decisions.md`: open decisions and missing pieces.
 
 ## Roadmap
 

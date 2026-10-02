@@ -4,13 +4,17 @@ A phone-friendly web app for do-it-yourself pool owners (not Zack's service cust
 
 ## Start of every session
 
-Briefly remind the user of the open items in `NEXT-STEPS.md` (a short list, not the whole file), and update that file as items get decided or new ones come up.
+Briefly remind the user of the open items in `planning/open-decisions.md` (a short list, not the whole file), and update that file as items get decided or new ones come up.
 
 ## Files
 
 - `index.html`: the whole app (HTML, CSS and JS in one file, no build step). Key tables near the top of the script: `FIELDS` (readings and ranges), `TEST_KITS`, `PRODUCTS` (package sizes, dosing rates, prices), `DELIVERY`, `PREMIUM`, `JUMP_LIMITS`.
 - `tools/profit-planner.html`: owner tool for costs, break-even and chemical pricing.
-- `NEXT-STEPS.md`: open decisions and missing pieces.
+- `planning/`: business notes, not code. `business-plan.md` holds what's been decided in brainstorming; `open-decisions.md` holds open questions.
+
+## Planning vs building
+
+Brainstorming (pricing, brands, strategy) happens in chat. Code changes only build what `planning/business-plan.md` says is decided. If a request is still an open idea, suggest settling it in chat first and recording the decision in `planning/` before writing code.
 
 ## Conventions
 

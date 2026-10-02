@@ -317,6 +317,9 @@ function render() {
 
   document.getElementById("out-sentence").textContent = needed === null
     ? "Each Premium member costs more than they bring in. Raise the price or markup, or cut the cost per stop."
+    : needed === 0
+    ? `Your ${v.basic} Basic delivery customers already cover your ${money0(m.fixed)} in monthly running costs, so every Premium member is profit. ` +
+      `Each delivery stop costs you about ${money(m.stop)} in time and gas.`
     : `With ${v.basic} Basic customers ordering, ${needed} Premium member${needed === 1 ? "" : "s"} cover${needed === 1 ? "s" : ""} your ${money0(m.fixed)} in monthly running costs. ` +
       `Each delivery stop costs you about ${money(m.stop)} in time and gas.`;
 

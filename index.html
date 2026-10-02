@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- ARTIFACT-START -->
+<title>Pool Water Check</title>
+<meta name="theme-color" content="#0B6E8F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Layout: one narrow column of "test cards", one per chemical, readable in full sun. */
+:root {
+  --bg: #EAF2F5;
+  --surface: #FFFFFF;
+  --ink: #0E2A36;
+  --muted: #557280;
+  --line: #CCDDE4;
+  --accent: #0B6E8F;
+  --accent-ink: #FFFFFF;
+  --ideal: #23855A;
+  --ok: #6A9A2E;
+  --warn: #C27712;
+  --crit: #C2413A;
+  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0A1A21; --surface: #11262F; --ink: #E2EEF2; --muted: #8DA8B4; --line: #24424E;
+    --accent: #4BB6D6; --accent-ink: #062029;
+    --ideal: #4CC283; --ok: #A6C95B; --warn: #E9A24B; --crit: #F06C60;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0A1A21; --surface: #11262F; --ink: #E2EEF2; --muted: #8DA8B4; --line: #24424E;
+  --accent: #4BB6D6; --accent-ink: #062029;
+  --ideal: #4CC283; --ok: #A6C95B; --warn: #E9A24B; --crit: #F06C60;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.45;
+  padding-inline: 16px;
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+header h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 2rem;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  margin: 0;
+  text-wrap: balance;
+}
+header p { margin: 6px 0 0; color: var(--muted); }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+/* Sample banner */
+.notice {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  color: var(--ink);
+}
+.notice p { margin: 0; flex: 1 1 200px; min-width: 0; }
+
+/* Summary */
+.summary-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.summary-title { font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; line-height: 1.1; margin: 0; }
+.tally { display: flex; gap: 8px; flex-wrap: wrap; }
+.issues { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.issues li { display: flex; gap: 8px; align-items: baseline; }
+.issues .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; transform: translateY(1px); }
+
+/* Pool setup */
+.setup-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { flex: 1; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  min-height: 44px;
+  padding: 0 12px;
+}
+button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-weight: 700;
+}
+.btn-primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+input[type="number"] {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reading cards */
+.card { gap: 10px; }
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.card-head > div { min-width: 0; }
+.card-name { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; line-height: 1.1; margin: 0; }
+.card-sub { color: var(--muted); font-size: 0.9rem; margin: 2px 0 0; }
+
+.pill {
+  flex: none;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+  white-space: nowrap;
+}
+.lv-ideal { color: var(--ideal); }
+.lv-ok { color: var(--ok); }
+.lv-warn { color: var(--warn); }
+.lv-crit { color: var(--crit); }
+.lv-check { color: var(--crit); }
+.lv-empty, .lv-info { color: var(--muted); }
+.bg-ideal { background: var(--ideal); }
+.bg-ok { background: var(--ok); }
+.bg-warn { background: var(--warn); }
+.bg-crit, .bg-check { background: var(--crit); }
+
+.entry { display: grid; grid-template-columns: 56px 1fr 56px; gap: 8px; }
+.entry input {
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.9rem;
+  min-height: 56px;
+}
+.step {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1;
+  min-height: 56px;
+}
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+}
+.chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+
+/* Range bar: zones drawn to scale, marker at the reading */
+.bar { position: relative; height: 10px; border-radius: 999px; overflow: visible; display: flex; }
+.bar .zone { height: 100%; opacity: 0.35; }
+.bar .zone:first-child { border-radius: 999px 0 0 999px; }
+.bar .zone:last-of-type { border-radius: 0 999px 999px 0; }
+.bar .zone.bg-ideal { opacity: 0.8; }
+.marker {
+  position: absolute; top: 50%; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--surface); border: 3px solid var(--ink);
+  transform: translate(-50%, -50%);
+  transition: left 160ms ease;
+}
+.scale { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.msg { margin: 0; }
+
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.actions .btn { flex: 1 1 140px; }
+footer { color: var(--muted); font-size: 0.85rem; }
+footer p { margin: 0 0 6px; }
+
+@media (prefers-reduced-motion: reduce) { .marker { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Pool Water Check</h1>
+    <p>Enter your test strip or kit results. Each reading shows where it sits against the ideal range.</p>
+  </header>
+
+  <div class="notice" id="sample-notice" hidden>
+    <p><strong>These are sample readings.</strong> Clear them to enter your own.</p>
+    <button class="btn" id="clear-sample" type="button">Clear readings</button>
+  </div>
+
+  <section class="panel" aria-labelledby="summary-title">
+    <div class="summary-head">
+      <h2 class="summary-title" id="summary-title">Enter a reading</h2>
+      <div class="tally" id="tally"></div>
+    </div>
+    <ul class="issues" id="issues"></ul>
+  </section>
+
+  <section class="panel" aria-labelledby="setup-title">
+    <span class="label" id="setup-title">Your pool</span>
+    <div class="setup-row">
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+        <span class="card-sub" id="type-label">Sanitizer</span>
+        <div class="seg" role="group" aria-labelledby="type-label">
+          <button type="button" id="type-chlorine" data-type="chlorine" aria-pressed="true">Chlorine</button>
+          <button type="button" id="type-salt" data-type="salt" aria-pressed="false">Saltwater</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+        <label class="card-sub" for="volume">Size (gallons)</label>
+        <input type="number" id="volume" inputmode="numeric" min="500" max="200000" step="500" placeholder="e.g. 15000">
+      </div>
+    </div>
+  </section>
+
+  <div id="cards" class="wrap" style="max-width:none"></div>
+
+  <div class="actions">
+    <button class="btn" type="button" id="load-sample">Load sample</button>
+    <button class="btn" type="button" id="clear-all">Clear readings</button>
+  </div>
+
+  <footer>
+    <p>Ranges are typical targets for residential pools. Your pool's surface, equipment and local water can change what's right. Always follow chemical product labels.</p>
+    <p>Readings are saved on this device only.</p>
+  </footer>
+</div>
+
+<script>
+// ---- Chemistry ranges -------------------------------------------------------
+// bands: [veryLow, low, idealLow, idealHigh, high, veryHigh]
+//   value <  veryLow   -> crit (very low)
+//   value <  low       -> warn (low)
+//   value <  idealLow  -> ok   (slightly low)
+//   value <= idealHigh -> ideal
+//   value <= high      -> ok   (slightly high)
+//   value <= veryHigh  -> warn (high)
+//   otherwise          -> crit (very high)
+// input: the span most test kits can actually read; outside it we ask to re-check.
+// scale: what the range bar shows.
+const FIELDS = [
+  {
+    key: "fc", name: "Free chlorine", unit: "ppm", step: 0.5, decimals: 1,
+    hint: "The chlorine that's actively cleaning the water.",
+    input: [0, 20], scale: [0, 10],
+    bands: [0.5, 1, 2, 4, 5, 10],
+    chips: [0, 0.5, 1, 3, 5, 10],
+    low: "Not enough sanitizer. Algae and bacteria can take hold.",
+    high: "More than needed. Above 10 ppm, wait for it to drop before swimming.",
+  },
+  {
+    key: "tc", name: "Total chlorine", unit: "ppm", step: 0.5, decimals: 1, optional: true,
+    hint: "Optional. Used with free chlorine to find combined chlorine.",
+    input: [0, 20], scale: [0, 2],
+    bands: [0, 0, 0, 0.2, 0.5, 1],
+    chips: [0, 0.5, 1, 3, 5, 10],
+    derived: true,
+    low: "",
+    high: "Combined chlorine (chloramines) is building up. That's the \"chlorine smell.\" Shocking the pool clears it.",
+  },
+  {
+    key: "ph", name: "pH", unit: "", step: 0.1, decimals: 1,
+    hint: "How acidic or basic the water is.",
+    input: [6.0, 9.0], scale: [6.8, 8.4],
+    bands: [7.0, 7.2, 7.4, 7.6, 7.8, 8.2],
+    chips: [6.8, 7.2, 7.5, 7.8, 8.4],
+    low: "Acidic water stings eyes and can corrode metal and etch plaster.",
+    high: "Chlorine works poorly and scale can form on tile and equipment.",
+  },
+  {
+    key: "ta", name: "Total alkalinity", unit: "ppm", step: 10, decimals: 0,
+    hint: "Buffers pH so it doesn't swing.",
+    input: [0, 300], scale: [0, 240],
+    bands: [40, 60, 80, 120, 150, 200],
+    chips: [0, 40, 80, 120, 180, 240],
+    low: "pH will bounce around and be hard to hold steady.",
+    high: "pH will keep creeping up.",
+  },
+  {
+    key: "ch", name: "Calcium hardness", unit: "ppm", step: 25, decimals: 0,
+    hint: "Dissolved calcium. Protects plaster and grout.",
+    input: [0, 1200], scale: [0, 1000],
+    bands: [100, 150, 200, 400, 500, 800],
+    chips: [0, 100, 250, 500, 1000],
+    low: "Soft water can pull calcium from plaster and grout.",
+    high: "Can cause cloudy water and scale buildup.",
+  },
+  {
+    key: "cya", name: "Stabilizer (CYA)", unit: "ppm", step: 10, decimals: 0,
+    hint: "Cyanuric acid. Shields chlorine from the sun.",
+    input: [0, 300], scale: [0, 150],
+    bands: [10, 20, 30, 50, 80, 100],
+    saltBands: [30, 50, 60, 80, 90, 120],
+    chips: [0, 30, 50, 100, 150],
+    low: "Sunlight will burn off chlorine quickly.",
+    high: "Chlorine gets weaker. The usual fix is draining and refilling some water.",
+  },
+  {
+    key: "salt", name: "Salt", unit: "ppm", step: 100, decimals: 0, saltOnly: true,
+    hint: "Check your salt cell's label for its exact range.",
+    input: [0, 6000], scale: [0, 5000],
+    bands: [2000, 2700, 3000, 3400, 3800, 4500],
+    chips: [2000, 3000, 3500, 4000],
+    low: "The salt cell may stop making chlorine.",
+    high: "Water can taste salty and corrode metal parts.",
+  },
+];
+
+const LEVEL_RANK = { crit: 4, check: 4, warn: 3, ok: 1, ideal: 0, empty: -1, info: -1 };
+
+function bandsFor(field, poolType) {
+  return poolType === "salt" && field.saltBands ? field.saltBands : field.bands;
+}
+
+function fmt(field, v) {
+  return Number(v).toFixed(field.decimals);
+}
+
+// Returns { level, label, msg, barValue } for one reading.
+function assess(field, value, state) {
+  if (value === null) return { level: "empty", label: "Not tested", msg: field.hint, barValue: null };
+  const [min, max] = field.input;
+  if (value < min || value > max) {
+    return {
+      level: "check", label: "Check value",
+      msg: `Most test kits read ${fmt(field, min)}–${fmt(field, max)}${field.unit ? " " + field.unit : ""}. Double-check this number.`,
+      barValue: null,
+    };
+  }
+
+  let v = value;
+  let prefix = "";
+  if (field.derived) {
+    const fc = state.readings.fc;
+    if (fc === null) return { level: "info", label: "Needs free chlorine", msg: "Enter free chlorine to work out combined chlorine.", barValue: null };
+    if (value + 0.05 < fc) return { level: "check", label: "Check value", msg: "Total chlorine can't be lower than free chlorine. Re-test both.", barValue: null };
+    v = Math.max(0, value - fc);
+    prefix = `Combined chlorine is ${v.toFixed(1)} ppm. `;
+  }
+
+  const [vLow, low, iLow, iHigh, high, vHigh] = bandsFor(field, state.poolType);
+  const range = `Ideal ${fmt(field, iLow)}–${fmt(field, iHigh)}${field.unit ? " " + field.unit : ""}.`;
+  let level, label, msg;
+  if (v < vLow)        { level = "crit";  label = "Very low";      msg = field.low; }
+  else if (v < low)    { level = "warn";  label = "Low";           msg = field.low; }
+  else if (v < iLow)   { level = "ok";    label = "Slightly low";  msg = range; }
+  else if (v <= iHigh) { level = "ideal"; label = "Ideal";         msg = "Right where it should be."; }
+  else if (v <= high)  { level = "ok";    label = "Slightly high"; msg = range; }
+  else if (v <= vHigh) { level = "warn";  label = "High";          msg = field.high; }
+  else                 { level = "crit";  label = "Very high";     msg = field.high; }
+  if (field.derived && level === "ideal") msg = "Little to no chloramines.";
+  return { level, label, msg: prefix + msg, barValue: v };
+}
+
+// ---- State -----------------------------------------------------------------
+const STORE_KEY = "poolWaterCheck.v1";
+const SAMPLE = { poolType: "chlorine", volume: 15000, readings: { fc: 1, tc: 2, ph: 7.8, ta: 80, ch: 250, cya: 30, salt: null }, sample: true };
+
+function blankState() {
+  const readings = {};
+  FIELDS.forEach(f => readings[f.key] = null);
+  return { poolType: "chlorine", volume: null, readings, sample: false };
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) return Object.assign(blankState(), JSON.parse(raw));
+  } catch (e) { /* storage unavailable */ }
+  return structuredClone(SAMPLE);
+}
+
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
+}
+
+let state = load();
+
+// ---- Rendering ---------------------------------------------------------------
+const cardsEl = document.getElementById("cards");
+
+function zonesHtml(field) {
+  const [sMin, sMax] = field.scale;
+  const b = bandsFor(field, state.poolType);
+  const edges = [sMin, ...b, sMax].map(x => Math.min(sMax, Math.max(sMin, x)));
+  const levels = ["crit", "warn", "ok", "ideal", "ok", "warn", "crit"];
+  let html = "";
+  for (let i = 0; i < levels.length; i++) {
+    const w = ((edges[i + 1] - edges[i]) / (sMax - sMin)) * 100;
+    if (w > 0) html += `<span class="zone bg-${levels[i]}" style="width:${w}%"></span>`;
+  }
+  return html;
+}
+
+function buildCards() {
+  cardsEl.innerHTML = FIELDS.map(f => `
+    <section class="panel card" id="card-${f.key}" aria-labelledby="name-${f.key}">
+      <div class="card-head">
+        <div>
+          <h3 class="card-name" id="name-${f.key}">${f.name}</h3>
+          <p class="card-sub">${f.unit ? f.unit + " · " : ""}<span data-range></span></p>
+        </div>
+        <span class="pill" data-pill></span>
+      </div>
+      <div class="entry">
+        <button type="button" class="step" data-step="-1" aria-label="Lower ${f.name}">−</button>
+        <input type="number" id="in-${f.key}" inputmode="decimal" step="${f.step}"
+               aria-label="${f.name}${f.unit ? " in " + f.unit : ""}" placeholder="–">
+        <button type="button" class="step" data-step="1" aria-label="Raise ${f.name}">+</button>
+      </div>
+      <div class="chips" role="group" aria-label="Common ${f.name} values">
+        ${f.chips.map(c => `<button type="button" class="chip" data-chip="${c}">${fmt(f, c)}</button>`).join("")}
+      </div>
+      <div>
+        <div class="bar" data-bar></div>
+        <div class="scale"><span data-smin></span><span data-slabel></span><span data-smax></span></div>
+      </div>
+      <p class="msg" data-msg></p>
+    </section>`).join("");
+
+  FIELDS.forEach(f => {
+    const card = document.getElementById("card-" + f.key);
+    const input = card.querySelector("input");
+    input.value = state.readings[f.key] ?? "";
+    input.addEventListener("input", () => {
+      const v = input.value.trim() === "" ? null : Number(input.value);
+      setReading(f.key, Number.isFinite(v) ? v : null, false);
+    });
+    card.querySelectorAll("[data-step]").forEach(btn => btn.addEventListener("click", () => {
+      const cur = state.readings[f.key];
+      const base = cur ?? (bandsFor(f, state.poolType)[2] + bandsFor(f, state.poolType)[3]) / 2;
+      const next = cur === null ? base : cur + Number(btn.dataset.step) * f.step;
+      setReading(f.key, Math.max(f.input[0], Number(next.toFixed(f.decimals))), true);
+    }));
+    card.querySelectorAll("[data-chip]").forEach(btn => btn.addEventListener("click", () => {
+      setReading(f.key, Number(btn.dataset.chip), true);
+    }));
+  });
+}
+
+function setReading(key, value, syncInput) {
+  state.readings[key] = value;
+  if (state.sample) state.sample = false;
+  if (syncInput) {
+    const f = FIELDS.find(x => x.key === key);
+    document.getElementById("in-" + key).value = value === null ? "" : fmt(f, value);
+  }
+  save();
+  render();
+}
+
+function render() {
+  const results = [];
+  FIELDS.forEach(f => {
+    const card = document.getElementById("card-" + f.key);
+    const hidden = f.saltOnly && state.poolType !== "salt";
+    card.hidden = hidden;
+    if (hidden) return;
+
+    const r = assess(f, state.readings[f.key], state);
+    results.push({ f, r });
+
+    const b = bandsFor(f, state.poolType);
+    card.querySelector("[data-range]").textContent = f.derived
+      ? `combined ideal under ${fmt(f, b[3])}`
+      : `ideal ${fmt(f, b[2])}–${fmt(f, b[3])}`;
+
+    const pill = card.querySelector("[data-pill]");
+    pill.textContent = r.label;
+    pill.className = "pill lv-" + r.level;
+    card.querySelector("[data-msg]").textContent = r.msg;
+
+    const bar = card.querySelector("[data-bar]");
+    bar.innerHTML = zonesHtml(f);
+    if (r.barValue !== null) {
+      const [sMin, sMax] = f.scale;
+      const pct = Math.min(100, Math.max(0, ((r.barValue - sMin) / (sMax - sMin)) * 100));
+      bar.insertAdjacentHTML("beforeend", `<span class="marker" style="left:${pct}%"></span>`);
+    }
+    card.querySelector("[data-smin]").textContent = fmt(f, f.scale[0]);
+    card.querySelector("[data-smax]").textContent = fmt(f, f.scale[1]) + "+";
+    card.querySelector("[data-slabel]").textContent = f.derived ? "combined" : "";
+
+    const cur = state.readings[f.key];
+    card.querySelectorAll("[data-chip]").forEach(c =>
+      c.setAttribute("aria-pressed", String(cur !== null && Number(c.dataset.chip) === cur)));
+  });
+
+  renderSummary(results);
+
+  document.querySelectorAll("[data-type]").forEach(btn =>
+    btn.setAttribute("aria-pressed", String(btn.dataset.type === state.poolType)));
+  document.getElementById("sample-notice").hidden = !state.sample;
+}
+
+function renderSummary(results) {
+  const tested = results.filter(x => x.r.level !== "empty" && x.r.level !== "info");
+  const problems = tested
+    .filter(x => LEVEL_RANK[x.r.level] >= 3)
+    .sort((a, b) => LEVEL_RANK[b.r.level] - LEVEL_RANK[a.r.level]);
+  const near = tested.filter(x => x.r.level === "ok");
+  const good = tested.filter(x => x.r.level === "ideal");
+
+  const title = document.getElementById("summary-title");
+  if (tested.length === 0) title.textContent = "Enter a reading";
+  else if (problems.length === 0 && near.length === 0) title.textContent = "Water looks balanced";
+  else if (problems.length === 0) title.textContent = "Close. A few small tweaks";
+  else title.textContent = problems.length === 1 ? "1 reading needs attention" : `${problems.length} readings need attention`;
+
+  const tally = [];
+  if (good.length) tally.push(`<span class="pill lv-ideal">${good.length} ideal</span>`);
+  if (near.length) tally.push(`<span class="pill lv-ok">${near.length} close</span>`);
+  if (problems.length) tally.push(`<span class="pill lv-warn">${problems.length} off</span>`);
+  document.getElementById("tally").innerHTML = tally.join("");
+
+  const list = problems.concat(near);
+  document.getElementById("issues").innerHTML = list.length
+    ? list.map(({ f, r }) =>
+        `<li><span class="dot bg-${r.level}"></span><span><strong>${f.name}: ${r.label.toLowerCase()}.</strong> ${r.msg}</span></li>`).join("")
+    : (tested.length ? `<li>Everything you tested is in the ideal range.</li>` : `<li>Start with free chlorine and pH. Those matter most day to day.</li>`);
+}
+
+// ---- Wiring -------------------------------------------------------------------
+function fillInputs() {
+  FIELDS.forEach(f => {
+    const v = state.readings[f.key];
+    document.getElementById("in-" + f.key).value = v === null ? "" : fmt(f, v);
+  });
+  document.getElementById("volume").value = state.volume ?? "";
+}
+
+function clearReadings() {
+  const keep = { poolType: state.poolType, volume: state.sample ? null : state.volume };
+  state = Object.assign(blankState(), keep);
+  save();
+  fillInputs();
+  render();
+}
+
+document.querySelectorAll("[data-type]").forEach(btn => btn.addEventListener("click", () => {
+  state.poolType = btn.dataset.type;
+  save();
+  render();
+}));
+document.getElementById("volume").addEventListener("input", e => {
+  const v = Number(e.target.value);
+  state.volume = e.target.value.trim() === "" || !Number.isFinite(v) ? null : v;
+  save();
+});
+document.getElementById("clear-sample").addEventListener("click", clearReadings);
+document.getElementById("clear-all").addEventListener("click", clearReadings);
+document.getElementById("load-sample").addEventListener("click", () => {
+  state = structuredClone(SAMPLE);
+  save();
+  fillInputs();
+  render();
+});
+
+buildCards();
+fillInputs();
+render();
+</script>
+<!-- ARTIFACT-END -->
+</body>
+</html>

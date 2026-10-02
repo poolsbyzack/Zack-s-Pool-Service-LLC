@@ -1,0 +1,8 @@
+{
+  "name": "Pool Water Check",
+  "short_name": "Pool Check",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#EAF2F5",
+  "theme_color": "#0B6E8F"
+}

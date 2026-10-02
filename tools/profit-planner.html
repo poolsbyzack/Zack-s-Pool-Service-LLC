@@ -134,8 +134,8 @@ a { color: var(--accent); }
       <div class="field"><label for="basic">Basic customers who order</label><div class="input"><input id="basic" type="number" step="5" min="0" inputmode="numeric"></div></div>
       <div class="field"><label for="bdel">Deliveries per Basic customer</label><div class="input"><input id="bdel" type="number" step="0.5" min="0" inputmode="decimal"><span>/mo</span></div></div>
       <div class="field"><label for="fee">Delivery fee (Basic only)</label><div class="input"><span>$</span><input id="fee" type="number" step="1" min="0" inputmode="decimal"></div></div>
-      <div class="field"><label for="cost">Your chemical cost per order</label><div class="input"><span>$</span><input id="cost" type="number" step="1" min="0" inputmode="decimal"></div><span class="hint">What you pay your supplier.</span></div>
-      <div class="field"><label for="markup">Markup on chemicals</label><div class="input"><input id="markup" type="number" step="5" min="0" inputmode="decimal"><span>%</span></div><span class="hint">See the pricing guide below.</span></div>
+      <div class="field"><label for="cost">Your chemical cost per order</label><div class="input"><span>$</span><input id="cost" type="number" step="1" min="0" inputmode="decimal"></div><span class="hint">What you pay your supplier. Default: 2 gal chlorine + 1 gal acid at your costs.</span></div>
+      <div class="field"><label for="markup">Markup on chemicals</label><div class="input"><input id="markup" type="number" step="5" min="0" inputmode="decimal"><span>%</span></div><span class="hint">170% ≈ selling at store shelf price. See the guide below.</span></div>
       <div class="field"><label for="mins">Minutes per stop</label><div class="input"><input id="mins" type="number" step="1" min="0" inputmode="numeric"><span>min</span></div><span class="hint">Lower when it's on your route anyway.</span></div>
       <div class="field"><label for="wage">Your time is worth</label><div class="input"><span>$</span><input id="wage" type="number" step="5" min="0" inputmode="decimal"><span>/hr</span></div></div>
       <div class="field"><label for="miles">Extra miles per stop</label><div class="input"><input id="miles" type="number" step="1" min="0" inputmode="decimal"><span>mi</span></div></div>
@@ -239,7 +239,9 @@ a { color: var(--accent); }
 // Starting estimates. Every one is meant to be replaced with real numbers.
 const DEFAULTS = {
   price: 4.99, members: 50, photos: 8,
-  pdel: 2, basic: 20, bdel: 1, fee: 10, cost: 20, markup: 35,
+  // A typical order: 2 gal liquid chlorine ($1.98/gal) + 1 gal muriatic acid ($4.87) = $8.83 cost.
+  // Sold near shelf price (~$24) that's about a 170% markup.
+  pdel: 2, basic: 20, bdel: 1, fee: 10, cost: 8.83, markup: 170,
   mins: 10, wage: 30, miles: 3, permile: 0.70,
   bottles: 0.17, scost: 8, sprice: 14,
   hosting: 25, domain: 5, insurance: 50, marketing: 100, other: 0,

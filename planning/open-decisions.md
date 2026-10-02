@@ -18,6 +18,14 @@ Things the app is waiting on. Check items off (or delete them) as they're decide
 - [ ] **Get 2–3 strip quotes**, including private label (your name on the bottle): LaMotte (5,000+ strip minimum, about 100 bottles) and Bartovation (no minimum).
 - [ ] **Score the strip brands** on: tests included (does it read salt and stabilizer?), accuracy, color chart clarity (matters for photo reading), shelf life, your cost, store price, rebates, private label option.
 
+## From your supplier costs (see supplier-costs.md)
+
+- [ ] **Bulk sizes vs what customers need**: sell stabilizer, baking soda and shock only in original containers, find consumer sizes, or dose on site? Ask about repackaging rules before splitting any bags.
+- [ ] **ZAPPIT shock**: cal-hypo or dichlor? (Changes the dose math.)
+- [ ] **Salt bag size** and **muriatic acid strength** to confirm.
+- [ ] **Shelf prices** to look up for stabilizer, baking soda, shock, salt, Algae Max.
+- [ ] **Accessories** (dispenser, scoop, hose): add an extras list to the app?
+
 ## Numbers to check against your experience
 
 - [ ] Dosing rates, especially acid (pH response varies pool to pool). In `PRODUCTS` in `index.html`.

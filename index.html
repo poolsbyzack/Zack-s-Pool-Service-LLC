@@ -246,6 +246,16 @@ input[type="number"] {
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .toast { margin: 0; color: var(--ideal); font-weight: 700; }
 
+/* Premium */
+.premium-body, .order-body { display: flex; flex-direction: column; gap: 10px; }
+.premium-body p { margin: 0; }
+.trial-form { display: flex; flex-direction: column; gap: 8px; }
+.trial-form label:not(.check) { font-weight: 700; margin-top: 4px; }
+.text { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; min-height: 44px; padding: 0 12px; width: 100%; }
+.terms { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.form-error { color: var(--crit); font-weight: 700; }
+.trial-reminder { border-left: 4px solid var(--warn); padding: 8px 12px; background: var(--bg); border-radius: 0 10px 10px 0; }
+
 /* Save + recent tests */
 .save-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .save-row .btn { flex: 0 0 auto; }
@@ -329,6 +339,9 @@ footer p { margin: 0 0 6px; }
   <section class="panel" id="order" aria-labelledby="order-title" hidden>
     <h2 class="section-title" id="order-title">Delivered to your door</h2>
     <p class="muted">Everything this plan calls for, rounded up to full packages.</p>
+    <label class="check" for="add-strips"><input type="checkbox" id="add-strips"> Add a bottle of test strips</label>
+    <p class="muted" id="strips-note"></p>
+    <div id="order-body" class="order-body">
     <table class="order-table" id="order-table"></table>
     <p class="muted" id="price-note">Prices are confirmed when we schedule your delivery.</p>
     <div class="retest" id="retest-box" hidden>
@@ -340,12 +353,18 @@ footer p { margin: 0 0 6px; }
     <p class="muted" id="order-contact"></p>
     <label class="label" for="order-text">Your request</label>
     <textarea class="order-text" id="order-text" readonly></textarea>
+    </div>
   </section>
 
   <section class="panel" id="history" aria-labelledby="history-title" hidden>
     <h2 class="section-title" id="history-title">Recent tests</h2>
     <p class="muted" id="history-note"></p>
     <ul class="history-list" id="history-list"></ul>
+  </section>
+
+  <section class="panel" id="premium" aria-labelledby="premium-title">
+    <h2 class="section-title" id="premium-title">Premium</h2>
+    <div id="premium-body" class="premium-body"></div>
   </section>
 
   <div class="actions">
@@ -356,6 +375,7 @@ footer p { margin: 0 0 6px; }
   <footer>
     <p>Ranges are typical targets for residential pools. Your pool's surface, equipment and local water can change what's right. Always follow chemical product labels.</p>
     <p>Readings are saved on this device only.</p>
+    <label class="check" for="owner-preview"><input type="checkbox" id="owner-preview"> Preview as Premium (owner testing)</label>
   </footer>
 </div>
 
@@ -565,6 +585,8 @@ const PRODUCTS = {
     rate: 0.083 },  // per 1 ppm CYA
   salt: { name: "Pool salt", unit: "lb", pkg: 40, pkgLabel: "40 lb bag", price: null,
     rate: 0.0835 }, // per 1 ppm salt
+  strips: { name: "Test strips", unit: "ct", pkg: 1, pkgLabel: "bottle of 50", price: null,
+    rate: 0 },      // not dosed; brand TBD so the app's color blocks match the bottle
 };
 
 const DELIVERY = {
@@ -706,9 +728,10 @@ function planTreatment(st, levels) {
   return { needsVolume: false, steps, retest };
 }
 
-// Packages to deliver for the plan, one line per product.
-function buildOrder(plan) {
-  const lines = {};
+// Packages to deliver for the plan, one line per product, plus any extras
+// (like test strips) as { productKey: qty }.
+function buildOrder(plan, extras = {}) {
+  const lines = Object.assign({}, extras);
   plan.steps.filter(s => s.product).forEach(s => {
     const p = PRODUCTS[s.product];
     const qty = Math.max(1, Math.ceil(s.total / p.pkg - 0.05));
@@ -727,7 +750,8 @@ function blankState() {
   const readings = {};
   FIELDS.forEach(f => readings[f.key] = null);
   // kits: which test kit each field uses. raw: what was entered on that kit.
-  return { poolType: "chlorine", volume: null, readings, kits: {}, raw: {}, chlorineProduct: "liquidChlorine", retested: false, history: [], savedAt: null, sample: false };
+  return { poolType: "chlorine", volume: null, readings, kits: {}, raw: {}, chlorineProduct: "liquidChlorine", retested: false, history: [], savedAt: null,
+    membership: blankMembership(), stripsLeft: null, addStrips: false, ownerPreview: false, sample: false };
 }
 
 function sampleState() {
@@ -737,7 +761,11 @@ function sampleState() {
 function load() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (raw) return Object.assign(blankState(), JSON.parse(raw));
+    if (raw) {
+      const st = Object.assign(blankState(), JSON.parse(raw));
+      st.membership = Object.assign(blankMembership(), st.membership);
+      return st;
+    }
   } catch (e) { /* storage unavailable */ }
   return sampleState();
 }
@@ -1026,7 +1054,7 @@ function renderSummary(results, jumps) {
 
 // ---- Saved tests & big-jump check ----------------------------------------------
 // Basic keeps the last few tests on the phone. Premium will keep the whole season.
-const HISTORY_LIMIT = 5;
+const HISTORY_KEEP = 200;
 
 // How much a reading can believably change between tests. A bigger change is
 // more likely a misread strip or a typo, so we ask for a retest. Chlorine is
@@ -1047,7 +1075,8 @@ function saveTest() {
     volume: state.volume,
     readings: Object.assign({}, state.readings),
   };
-  state.history = [entry].concat(state.history || []).slice(0, HISTORY_LIMIT);
+  state.history = [entry].concat(state.history || []).slice(0, HISTORY_KEEP);
+  if (state.stripsLeft !== null) state.stripsLeft = Math.max(0, state.stripsLeft - 1);
   state.savedAt = entry.at;
   save();
 }
@@ -1098,7 +1127,8 @@ function jumpText(f, j) {
 }
 
 function renderHistory() {
-  const list = state.history || [];
+  const all = state.history || [];
+  const list = isPremium() ? all : all.slice(0, PREMIUM.basicHistory);
   const btn = document.getElementById("save-test");
   const status = document.getElementById("save-status");
   const canSave = !state.sample && hasReadings(state);
@@ -1111,8 +1141,12 @@ function renderHistory() {
 
   const panel = document.getElementById("history");
   panel.hidden = list.length === 0;
-  document.getElementById("history-note").textContent =
-    `Your last ${HISTORY_LIMIT} tests are kept on this phone.`;
+  const hiddenCount = all.length - list.length;
+  document.getElementById("history-note").textContent = isPremium()
+    ? `Every test this season, saved on this phone.`
+    : hiddenCount > 0
+      ? `Showing your last ${PREMIUM.basicHistory} tests. ${hiddenCount} older test${hiddenCount === 1 ? " is" : "s are"} saved too. Premium shows the whole season.`
+      : `Basic shows your last ${PREMIUM.basicHistory} tests.`;
   document.getElementById("history-list").innerHTML = list.map(h => {
     const vals = FIELDS.filter(f => h.readings[f.key] !== null && h.readings[f.key] !== undefined && !(f.saltOnly && h.poolType !== "salt"))
       .map(f => `<span class="hv"><span class="muted">${SHORT_NAMES[f.key]}</span> ${fmt(f, h.readings[f.key])}</span>`).join("");
@@ -1129,6 +1163,172 @@ function renderHistory() {
   }).join("");
 }
 
+// ---- Premium ---------------------------------------------------------------------
+// Basic keeps every reading and every dose amount. Premium sells convenience.
+const PREMIUM = {
+  price: 4.99, period: "month", trialDays: 14,
+  basicHistory: 5,     // tests Basic shows; everything is kept so upgrading reveals the season
+  refillAt: 10,        // strips left when Premium adds a bottle to the next delivery
+  bottleSize: 50,
+  reminderDays: 3,     // days before the trial ends that the reminder shows
+};
+const PREMIUM_FEATURES = [
+  "Every test saved for the whole season (Basic shows your last 5)",
+  "Free delivery",
+  "Test strips added to your delivery before you run out",
+  "Photo strip reading (coming soon)",
+  "Test-day reminders (coming soon)",
+];
+
+function blankMembership() {
+  return { status: "basic", trialEnds: null, trialUsed: false, account: null };
+}
+
+// "basic", "trial" or "premium". A trial that has ended rolls into a paid plan:
+// with payments live, Stripe charges the card saved at sign-up on that date.
+function membershipStatus() {
+  const m = state.membership;
+  if (m.status === "trial" && Date.now() > new Date(m.trialEnds).getTime()) {
+    m.status = "premium";
+    save();
+  }
+  return m.status;
+}
+
+function isPremium() {
+  return state.ownerPreview || membershipStatus() !== "basic";
+}
+
+function shortDate(iso) {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function escapeHtml(t) {
+  return String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+const premiumUi = { form: false, confirmCancel: false, error: "" };
+
+function trialEndDate() {
+  return new Date(Date.now() + PREMIUM.trialDays * 86400000);
+}
+
+function renderPremium() {
+  const el = document.getElementById("premium-body");
+  const status = membershipStatus();
+  const m = state.membership;
+  const price = `${money(PREMIUM.price)}/${PREMIUM.period}`;
+  const features = `<ul class="notes">${PREMIUM_FEATURES.map(f => `<li>${f}</li>`).join("")}</ul>`;
+  let html = "";
+
+  const offerTrial = !m.trialUsed;
+  if (status === "basic" && !state.ownerPreview && !premiumUi.form) {
+    html = `
+      <p>Testing, every reading and every dose amount are free. Premium saves you time:</p>
+      ${features}
+      <button class="btn btn-primary" type="button" data-action="open-trial">${offerTrial ? `Try Premium free for ${PREMIUM.trialDays} days` : `Get Premium for ${price}`}</button>
+      <p class="muted">${offerTrial ? `Then ${price}. ` : ""}Cancel anytime.</p>`;
+  } else if (status === "basic" && !state.ownerPreview && premiumUi.form) {
+    const a = m.account || {};
+    const ends = shortDate(trialEndDate().toISOString());
+    const terms = offerTrial
+      ? `<p><strong>Free until ${ends}.</strong> Then ${price}, charged automatically each ${PREMIUM.period} to the card you add at checkout, until you cancel.</p>
+          <p>Cancel anytime in this app before ${ends} and you won't be charged.</p>`
+      : `<p><strong>${price}</strong>, charged today and automatically each ${PREMIUM.period} to the card you add at checkout, until you cancel.</p>
+          <p>Your free trial has already been used. Cancel anytime in this app.</p>`;
+    html = `
+      <form id="trial-form" class="trial-form" novalidate>
+        <p>Set up your account once. We'll use it for deliveries and your plan.</p>
+        <label for="tr-name">Name</label>
+        <input class="text" id="tr-name" autocomplete="name" value="${escapeHtml(a.name || "")}" required>
+        <label for="tr-email">Email</label>
+        <input class="text" id="tr-email" type="email" autocomplete="email" value="${escapeHtml(a.email || "")}" required>
+        <label for="tr-phone">Mobile number <span class="muted">(for delivery updates)</span></label>
+        <input class="text" id="tr-phone" type="tel" autocomplete="tel" value="${escapeHtml(a.phone || "")}">
+        <label for="tr-address">Delivery address</label>
+        <input class="text" id="tr-address" autocomplete="street-address" value="${escapeHtml(a.address || "")}">
+        <div class="terms">${terms}</div>
+        <label class="check" for="tr-agree"><input type="checkbox" id="tr-agree"> I agree to these terms</label>
+        ${premiumUi.error ? `<p class="form-error" role="alert">${premiumUi.error}</p>` : ""}
+        <button class="btn btn-primary" type="submit">Continue to secure checkout</button>
+        <p class="muted">Card details are entered on Stripe's checkout page, never in this app. Checkout isn't connected yet, so this preview starts Premium without a card.</p>
+        <button class="btn" type="button" data-action="close-trial">Not now</button>
+      </form>`;
+  } else {
+    const label = state.ownerPreview && status === "basic" ? "Previewing Premium" : status === "trial" ? "Premium trial" : "Premium";
+    const daysLeft = status === "trial" ? Math.ceil((new Date(m.trialEnds) - Date.now()) / 86400000) : null;
+    const reminder = status === "trial" && daysLeft <= PREMIUM.reminderDays
+      ? `<p class="trial-reminder">Your free trial ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}. On ${shortDate(m.trialEnds)} it becomes ${price}.</p>` : "";
+    const planLine = status === "trial"
+      ? `Free until ${shortDate(m.trialEnds)}, then ${price}.`
+      : status === "premium" ? `${price}. Renews automatically.` : "Owner preview. Nobody is charged.";
+    const strips = state.stripsLeft === null
+      ? `<p class="muted">Tell us when you open a bottle and we'll count strips as you save tests.</p>`
+      : `<p><strong>${state.stripsLeft}</strong> test strips left${state.stripsLeft <= PREMIUM.refillAt ? ". A new bottle is on your next delivery." : "."}</p>`;
+    const cancel = status === "basic" ? "" : premiumUi.confirmCancel
+      ? `<div class="retest">
+          <p>${status === "trial" ? "Cancel your trial? You'll go back to Basic and won't be charged." : "Cancel Premium? You'll go back to Basic and won't be charged again."}</p>
+          <div class="actions">
+            <button class="btn" type="button" data-action="confirm-cancel">Yes, cancel</button>
+            <button class="btn btn-primary" type="button" data-action="keep">Keep Premium</button>
+          </div>
+        </div>`
+      : `<button class="btn" type="button" data-action="cancel">Cancel Premium</button>`;
+    html = `
+      <p><span class="pill lv-ideal">${label}</span></p>
+      <p>${planLine}</p>
+      ${reminder}
+      <span class="label">Test strips</span>
+      ${strips}
+      <button class="btn" type="button" data-action="new-bottle">I opened a new bottle (${PREMIUM.bottleSize})</button>
+      ${features}
+      ${cancel}`;
+  }
+  el.innerHTML = html;
+  document.getElementById("owner-preview").checked = !!state.ownerPreview;
+}
+
+function startTrial(form) {
+  const v = id => form.querySelector("#" + id).value.trim();
+  const account = { name: v("tr-name"), email: v("tr-email"), phone: v("tr-phone"), address: v("tr-address") };
+  state.membership.account = account;
+  if (!account.name || !/^\S+@\S+\.\S+$/.test(account.email)) {
+    premiumUi.error = "Add your name and a valid email to continue.";
+  } else if (!form.querySelector("#tr-agree").checked) {
+    premiumUi.error = "Check the box to agree to the terms.";
+  } else {
+    premiumUi.error = "";
+    premiumUi.form = false;
+    // One free trial per account; after that Premium starts paid.
+    if (state.membership.trialUsed) {
+      state.membership.status = "premium";
+    } else {
+      state.membership.status = "trial";
+      state.membership.trialUsed = true;
+      state.membership.trialEnds = trialEndDate().toISOString();
+    }
+  }
+  save();
+  renderPremium();
+  render();
+}
+
+function premiumAction(action) {
+  if (action === "open-trial") premiumUi.form = true;
+  if (action === "close-trial") { premiumUi.form = false; premiumUi.error = ""; }
+  if (action === "cancel") premiumUi.confirmCancel = true;
+  if (action === "keep") premiumUi.confirmCancel = false;
+  if (action === "confirm-cancel") {
+    premiumUi.confirmCancel = false;
+    state.membership.status = "basic";
+    state.membership.trialEnds = null;
+  }
+  if (action === "new-bottle") state.stripsLeft = PREMIUM.bottleSize;
+  save();
+  renderPremium();
+  render();
+}
+
 // ---- Plan & order rendering --------------------------------------------------
 function renderPlan(levels, jumps) {
   const plan = planTreatment(state, levels);
@@ -1138,16 +1338,9 @@ function renderPlan(levels, jumps) {
 
   if (plan.needsVolume) {
     planEl.innerHTML = `<p class="muted">Enter your pool size above to see how much to add.</p>`;
-    orderSection.hidden = true;
-    return;
-  }
-  if (!plan.steps.length) {
+  } else if (!plan.steps.length) {
     planEl.innerHTML = `<p class="muted">${tested ? "Nothing to add right now. Test again in 2–3 days." : "Enter your readings to get a plan."}</p>`;
-    orderSection.hidden = true;
-    return;
-  }
-
-  planEl.innerHTML = plan.steps.map((s, i) => {
+  } else planEl.innerHTML = plan.steps.map((s, i) => {
     const p = s.product ? PRODUCTS[s.product] : null;
     const picker = s.chlorinePicker ? `
         <div class="seg" role="group" aria-label="Chlorine product">
@@ -1170,18 +1363,29 @@ function renderPlan(levels, jumps) {
       </li>`;
   }).join("");
 
-  const order = buildOrder(plan);
-  orderSection.hidden = order.length === 0;
+  // Test strips: anyone can add a bottle; Premium adds one when they're running low.
+  const autoStrips = isPremium() && state.stripsLeft !== null && state.stripsLeft <= PREMIUM.refillAt;
+  const stripsBox = document.getElementById("add-strips");
+  stripsBox.checked = autoStrips || !!state.addStrips;
+  stripsBox.disabled = autoStrips;
+  document.getElementById("strips-note").textContent = autoStrips
+    ? `Added automatically: you're down to ${state.stripsLeft} strips.`
+    : isPremium() ? "Premium adds a bottle automatically when you're low." : "";
+  const extras = stripsBox.checked ? { strips: 1 } : {};
+  const order = buildOrder(plan.needsVolume ? { steps: [] } : plan, extras);
+  orderSection.hidden = order.length === 0 && !tested;
+  document.getElementById("order-body").hidden = order.length === 0;
   if (!order.length) return;
 
-  const allPriced = order.every(o => o.product.price !== null) && DELIVERY.fee !== null;
+  const deliveryFee = isPremium() ? 0 : DELIVERY.fee;
+  const allPriced = order.every(o => o.product.price !== null) && deliveryFee !== null;
   const rows = order.map(o => `
       <tr><td>${o.product.name}<span class="muted block">${o.qty} × ${o.product.pkgLabel}</span></td>
           <td class="num">${o.product.price !== null ? money(o.product.price * o.qty) : "—"}</td></tr>`).join("");
-  const total = allPriced ? order.reduce((a, o) => a + o.product.price * o.qty, 0) + DELIVERY.fee : null;
+  const total = allPriced ? order.reduce((a, o) => a + o.product.price * o.qty, 0) + deliveryFee : null;
   document.getElementById("order-table").innerHTML = `
       <tbody>${rows}
-        <tr><td>Delivery</td><td class="num">${DELIVERY.fee !== null ? money(DELIVERY.fee) : "—"}</td></tr>
+        <tr><td>Delivery</td><td class="num">${isPremium() ? "Free with Premium" : DELIVERY.fee !== null ? money(DELIVERY.fee) : "—"}</td></tr>
       </tbody>
       <tfoot><tr><td>Total</td><td class="num">${total !== null ? money(total) : "—"}</td></tr></tfoot>`;
   document.getElementById("price-note").hidden = total !== null;
@@ -1204,7 +1408,9 @@ function renderPlan(levels, jumps) {
   const readings = FIELDS.filter(f => levels[f.key] && levels[f.key] !== "empty" && levels[f.key] !== "info" && !(f.saltOnly && state.poolType !== "salt"))
     .map(f => `${f.name} ${fmt(f, state.readings[f.key])}`).join(", ");
   document.getElementById("order-text").value =
-    `Delivery request\nPool: ${Number(state.volume).toLocaleString()} gal, ${state.poolType === "salt" ? "saltwater" : "chlorine"}\n` +
+    `Delivery request${isPremium() ? " (Premium)" : ""}\n` +
+    (state.membership.account ? `For: ${state.membership.account.name}${state.membership.account.phone ? ", " + state.membership.account.phone : ""}${state.membership.account.address ? "\nAddress: " + state.membership.account.address : ""}\n` : "") +
+    (state.volume ? `Pool: ${Number(state.volume).toLocaleString()} gal, ${state.poolType === "salt" ? "saltwater" : "chlorine"}\n` : "") +
     `Readings: ${readings}\n\n${lines.join("\n")}`;
   document.getElementById("order-contact").textContent = DELIVERY.contact
     ? `Send it to ${DELIVERY.contact} and we'll confirm your delivery day.`
@@ -1218,7 +1424,8 @@ function fillInputs() {
 }
 
 function clearReadings() {
-  const keep = { poolType: state.poolType, kits: state.kits, chlorineProduct: state.chlorineProduct, history: state.history, volume: state.sample ? null : state.volume };
+  const keep = { poolType: state.poolType, kits: state.kits, chlorineProduct: state.chlorineProduct, history: state.history,
+    membership: state.membership, stripsLeft: state.stripsLeft, ownerPreview: state.ownerPreview, volume: state.sample ? null : state.volume };
   state = Object.assign(blankState(), keep);
   save();
   fillInputs();
@@ -1254,7 +1461,7 @@ document.getElementById("copy-order").addEventListener("click", () => {
   const toast = document.getElementById("copy-toast");
   const done = () => { toast.hidden = false; setTimeout(() => { toast.hidden = true; }, 3000); };
   // An order is based on these readings, so keep them.
-  if (!state.savedAt) { saveTest(); render(); }
+  if (!state.savedAt) { saveTest(); render(); renderPremium(); }
   try {
     navigator.clipboard.writeText(text.value).then(done, () => { text.focus(); text.select(); });
   } catch (err) {
@@ -1264,6 +1471,26 @@ document.getElementById("copy-order").addEventListener("click", () => {
 document.getElementById("save-test").addEventListener("click", () => {
   saveTest();
   render();
+  renderPremium();
+});
+document.getElementById("premium-body").addEventListener("click", e => {
+  const b = e.target.closest("[data-action]");
+  if (b) premiumAction(b.dataset.action);
+});
+document.getElementById("premium-body").addEventListener("submit", e => {
+  e.preventDefault();
+  startTrial(e.target);
+});
+document.getElementById("owner-preview").addEventListener("change", e => {
+  state.ownerPreview = e.target.checked;
+  save();
+  renderPremium();
+  render();
+});
+document.getElementById("add-strips").addEventListener("change", e => {
+  state.addStrips = e.target.checked;
+  save();
+  render();
 });
 document.getElementById("history-list").addEventListener("click", e => {
   const b = e.target.closest("[data-delete]");
@@ -1272,7 +1499,7 @@ document.getElementById("history-list").addEventListener("click", e => {
 document.getElementById("clear-sample").addEventListener("click", clearReadings);
 document.getElementById("clear-all").addEventListener("click", clearReadings);
 document.getElementById("load-sample").addEventListener("click", () => {
-  state = Object.assign(sampleState(), { history: state.history });
+  state = Object.assign(sampleState(), { history: state.history, membership: state.membership, stripsLeft: state.stripsLeft, ownerPreview: state.ownerPreview });
   save();
   fillInputs();
   render();
@@ -1280,6 +1507,7 @@ document.getElementById("load-sample").addEventListener("click", () => {
 
 buildCards();
 render();
+renderPremium();
 </script>
 <!-- ARTIFACT-END -->
 </body>

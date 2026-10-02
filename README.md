@@ -19,6 +19,19 @@ Open `index.html` in a browser. There's no build step. On a phone, use **Share �
 - **Save this test:** keeps the last 5 tests on the phone, listed under Recent tests (each can be deleted). Copying a delivery request saves the test automatically
 - **Big-jump check:** each reading is compared with the last saved test that included it (within 30 days). A change bigger than water usually makes on its own (pH 0.6, alkalinity 40, calcium 150, stabilizer 30, salt 800 ppm) shows a retest note and locks the delivery button until the customer confirms the retest. Chlorine is left out because it really does swing fast
 
+## Basic and Premium
+
+Basic keeps every reading, every dose amount and the big-jump check. Premium sells convenience:
+
+- Every test for the season (Basic shows the last 5; all tests are kept, so upgrading reveals them)
+- Free delivery
+- Test strip refills: the app counts a strip per saved test and adds a bottle to the next delivery at 10 left (anyone can add a bottle by hand)
+- Coming: photo strip reading, test-day reminders
+
+**Trial and billing.** Starting the 14-day trial collects name, email, mobile number and delivery address, then shows the terms (free until the date shown, then $4.99/month, charged automatically until cancelled) with an "I agree" box. Card entry will happen on Stripe Checkout; until that's connected the preview starts the trial without a card. When the trial ends it rolls into the paid plan. One free trial per account. A reminder shows 3 days before the trial ends, and Cancel Premium is one tap plus a confirmation. Settings are in `PREMIUM` in `index.html`.
+
+**Owner preview.** The "Preview as Premium" checkbox at the bottom unlocks Premium on that phone without a trial, for testing.
+
 ## Safety rules in the plan
 
 - pH moves bigger than 0.2 are split: add half, retest after 4 hours, then the rest only if still needed
@@ -64,6 +77,6 @@ All ranges live in the `FIELDS` table at the top of the script in `index.html`, 
 1. ✅ Reading entry + status
 2. ✅ Dose calculator + delivery request (manual: customer sends it, you confirm)
 3. Accounts + reading history
-4. Paid tier (Stripe)
+4. ✅ Basic / Premium with free trial (preview) → connect Stripe Checkout + accounts
 5. Photo reading of test strips
 6. Starter kits / strips by mail

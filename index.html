@@ -210,6 +210,9 @@ input[type="number"] {
 }
 .scale { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 .msg { margin: 0; }
+.kit { display: flex; flex-direction: column; gap: 6px; }
+.kit p { margin: 0; }
+.convert { margin: 0; text-align: center; font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; color: var(--accent); font-variant-numeric: tabular-nums; }
 
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .actions .btn { flex: 1 1 140px; }
@@ -349,6 +352,72 @@ const FIELDS = [
   },
 ];
 
+// ---- Test kits ----------------------------------------------------------------
+// A reading can come from different kinds of test kit. Each kit says what the
+// person enters and how to turn that into the reading's unit (ppm).
+//   direct: the kit shows ppm (a digital meter, the salt cell's display)
+//   drops:  count drops until the color changes; ppm = drops × perDrop
+//   pads:   color-block strip; tap the block that matches. chips are the chart's values
+//   scale:  titrator strip; read the number where the color stopped and look it up
+//           in the brand's chart: [[strip number, ppm], ...] in ascending order
+// To add a brand, add an entry to the field's list. brand: null means generic
+// values that we'll replace once a brand is picked.
+const TEST_KITS = {
+  salt: [
+    {
+      id: "salt-meter", label: "Meter", method: "direct", brand: null,
+      unit: "ppm", step: 100, decimals: 0, chips: [2500, 3000, 3200, 3500, 4000],
+      how: "A digital salt meter, or the salt reading on your salt system's display.",
+    },
+    {
+      id: "salt-drops", label: "Drop kit", method: "drops", brand: null, perDrop: 200,
+      unit: "drops", step: 1, decimals: 0, chips: [12, 14, 15, 16, 17, 18, 20],
+      how: "Count the drops it takes for the color to change. Most kits count 200 ppm per drop. Check your kit's instructions.",
+    },
+    {
+      id: "salt-strip", label: "Test strip", method: "pads", brand: null,
+      unit: "ppm", step: 1, decimals: 0, chips: [0, 1000, 2000, 3000, 4000, 5000],
+      how: "Tap the color block that matches your strip. These are generic blocks until we pick a strip brand.",
+    },
+    // Titrator strip example. Uncomment and fill `chart` from the brand's bottle.
+    // {
+    //   id: "salt-titrator-brandname", label: "Titrator", method: "scale", brand: "Brand name",
+    //   unit: "reading", step: 0.2, decimals: 1, chips: [],
+    //   chart: [[1.6, 400], [8.0, 7000]],
+    //   how: "Read the number where the dark color stopped on the strip.",
+    // },
+  ],
+};
+
+function chartLookup(chart, x) {
+  if (x <= chart[0][0]) return chart[0][1];
+  for (let i = 1; i < chart.length; i++) {
+    const [x1, y1] = chart[i];
+    if (x <= x1) {
+      const [x0, y0] = chart[i - 1];
+      return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
+    }
+  }
+  return chart[chart.length - 1][1];
+}
+
+// What the person entered -> reading in ppm.
+function kitToValue(kit, raw) {
+  if (raw === null) return null;
+  if (kit.method === "drops") return raw * kit.perDrop;
+  if (kit.method === "scale") return Math.round(chartLookup(kit.chart, raw));
+  return raw;
+}
+
+// Reading in ppm -> what that kit would show. Used when switching kits.
+function kitFromValue(kit, value) {
+  if (value === null) return null;
+  if (kit.method === "drops") return Math.round(value / kit.perDrop);
+  if (kit.method === "pads") return kit.chips.reduce((a, b) => Math.abs(b - value) < Math.abs(a - value) ? b : a);
+  if (kit.method === "scale") return null;
+  return value;
+}
+
 const LEVEL_RANK = { crit: 4, check: 4, warn: 3, ok: 1, ideal: 0, empty: -1, info: -1 };
 
 function bandsFor(field, poolType) {
@@ -402,7 +471,12 @@ const SAMPLE = { poolType: "chlorine", volume: 15000, readings: { fc: 1, tc: 2, 
 function blankState() {
   const readings = {};
   FIELDS.forEach(f => readings[f.key] = null);
-  return { poolType: "chlorine", volume: null, readings, sample: false };
+  // kits: which test kit each field uses. raw: what was entered on that kit.
+  return { poolType: "chlorine", volume: null, readings, kits: {}, raw: {}, sample: false };
+}
+
+function sampleState() {
+  return Object.assign(blankState(), structuredClone(SAMPLE));
 }
 
 function load() {
@@ -410,7 +484,7 @@ function load() {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) return Object.assign(blankState(), JSON.parse(raw));
   } catch (e) { /* storage unavailable */ }
-  return structuredClone(SAMPLE);
+  return sampleState();
 }
 
 function save() {
@@ -418,6 +492,28 @@ function save() {
 }
 
 let state = load();
+
+function activeKit(f) {
+  const list = TEST_KITS[f.key];
+  if (!list) return null;
+  return list.find(k => k.id === state.kits[f.key]) || list[0];
+}
+
+// What the number box is measuring for this field right now.
+function entrySpec(f) {
+  const k = activeKit(f);
+  return k
+    ? { unit: k.unit, step: k.step, decimals: k.decimals, chips: k.chips, min: 0, kit: k }
+    : { unit: f.unit, step: f.step, decimals: f.decimals, chips: f.chips, min: f.input[0], kit: null };
+}
+
+function entryValue(f) {
+  return activeKit(f) ? (state.raw[f.key] ?? null) : state.readings[f.key];
+}
+
+function fmtEntry(spec, v) {
+  return Number(v).toFixed(spec.decimals);
+}
 
 // ---- Rendering ---------------------------------------------------------------
 const cardsEl = document.getElementById("cards");
@@ -435,6 +531,19 @@ function zonesHtml(field) {
   return html;
 }
 
+function kitPickerHtml(f) {
+  const list = TEST_KITS[f.key];
+  if (!list) return "";
+  return `
+      <div class="kit">
+        <span class="card-sub" id="kit-label-${f.key}">Tested with</span>
+        <div class="seg" role="group" aria-labelledby="kit-label-${f.key}">
+          ${list.map(k => `<button type="button" id="kit-${k.id}" data-kit="${k.id}" aria-pressed="false">${k.label}</button>`).join("")}
+        </div>
+        <p class="card-sub" data-how></p>
+      </div>`;
+}
+
 function buildCards() {
   cardsEl.innerHTML = FIELDS.map(f => `
     <section class="panel card" id="card-${f.key}" aria-labelledby="name-${f.key}">
@@ -445,15 +554,14 @@ function buildCards() {
         </div>
         <span class="pill" data-pill></span>
       </div>
+      ${kitPickerHtml(f)}
       <div class="entry">
         <button type="button" class="step" data-step="-1" aria-label="Lower ${f.name}">−</button>
-        <input type="number" id="in-${f.key}" inputmode="decimal" step="${f.step}"
-               aria-label="${f.name}${f.unit ? " in " + f.unit : ""}" placeholder="–">
+        <input type="number" id="in-${f.key}" inputmode="decimal" placeholder="–">
         <button type="button" class="step" data-step="1" aria-label="Raise ${f.name}">+</button>
       </div>
-      <div class="chips" role="group" aria-label="Common ${f.name} values">
-        ${f.chips.map(c => `<button type="button" class="chip" data-chip="${c}">${fmt(f, c)}</button>`).join("")}
-      </div>
+      <p class="convert" data-convert hidden></p>
+      <div class="chips" role="group" aria-label="Common ${f.name} values" data-chips></div>
       <div>
         <div class="bar" data-bar></div>
         <div class="scale"><span data-smin></span><span data-slabel></span><span data-smax></span></div>
@@ -464,31 +572,82 @@ function buildCards() {
   FIELDS.forEach(f => {
     const card = document.getElementById("card-" + f.key);
     const input = card.querySelector("input");
-    input.value = state.readings[f.key] ?? "";
     input.addEventListener("input", () => {
       const v = input.value.trim() === "" ? null : Number(input.value);
-      setReading(f.key, Number.isFinite(v) ? v : null, false);
+      setEntry(f, Number.isFinite(v) ? v : null, false);
     });
-    card.querySelectorAll("[data-step]").forEach(btn => btn.addEventListener("click", () => {
-      const cur = state.readings[f.key];
-      const base = cur ?? (bandsFor(f, state.poolType)[2] + bandsFor(f, state.poolType)[3]) / 2;
-      const next = cur === null ? base : cur + Number(btn.dataset.step) * f.step;
-      setReading(f.key, Math.max(f.input[0], Number(next.toFixed(f.decimals))), true);
-    }));
-    card.querySelectorAll("[data-chip]").forEach(btn => btn.addEventListener("click", () => {
-      setReading(f.key, Number(btn.dataset.chip), true);
-    }));
+    card.addEventListener("click", e => {
+      const chip = e.target.closest("[data-chip]");
+      const step = e.target.closest("[data-step]");
+      const kit = e.target.closest("[data-kit]");
+      if (chip) setEntry(f, Number(chip.dataset.chip), true);
+      else if (step) stepEntry(f, Number(step.dataset.step));
+      else if (kit) switchKit(f, kit.dataset.kit);
+    });
+    renderEntry(f);
   });
 }
 
-function setReading(key, value, syncInput) {
-  state.readings[key] = value;
+// Number box, chips and kit picker: these change when the kit changes.
+function renderEntry(f) {
+  const card = document.getElementById("card-" + f.key);
+  const spec = entrySpec(f);
+  const input = card.querySelector("input");
+  input.step = spec.step;
+  input.min = spec.min;
+  input.setAttribute("aria-label", `${f.name}${spec.unit ? " in " + spec.unit : ""}`);
+  const v = entryValue(f);
+  input.value = v === null ? "" : fmtEntry(spec, v);
+  card.querySelector("[data-chips]").innerHTML = spec.chips
+    .map(c => `<button type="button" class="chip" data-chip="${c}">${fmtEntry(spec, c)}</button>`).join("");
+  if (spec.kit) {
+    card.querySelectorAll("[data-kit]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.kit === spec.kit.id)));
+    card.querySelector("[data-how]").textContent = spec.kit.how;
+  }
+}
+
+function setEntry(f, raw, syncInput) {
+  const kit = activeKit(f);
+  if (kit) {
+    state.raw[f.key] = raw;
+    state.readings[f.key] = kitToValue(kit, raw);
+  } else {
+    state.readings[f.key] = raw;
+  }
   if (state.sample) state.sample = false;
   if (syncInput) {
-    const f = FIELDS.find(x => x.key === key);
-    document.getElementById("in-" + key).value = value === null ? "" : fmt(f, value);
+    const spec = entrySpec(f);
+    document.getElementById("in-" + f.key).value = raw === null ? "" : fmtEntry(spec, raw);
   }
   save();
+  render();
+}
+
+function stepEntry(f, dir) {
+  const spec = entrySpec(f);
+  const cur = entryValue(f);
+  let next;
+  if (spec.kit && spec.kit.method === "pads") {
+    const pads = spec.chips;
+    const i = cur === null ? -1 : pads.indexOf(kitFromValue(spec.kit, cur));
+    next = pads[Math.min(pads.length - 1, Math.max(0, i === -1 ? Math.floor(pads.length / 2) : i + dir))];
+  } else if (cur === null) {
+    const b = bandsFor(f, state.poolType);
+    const mid = (b[2] + b[3]) / 2;
+    next = spec.kit ? (kitFromValue(spec.kit, mid) ?? spec.chips[0] ?? 0) : mid;
+  } else {
+    next = Math.max(spec.min, Number((cur + dir * spec.step).toFixed(spec.decimals)));
+  }
+  setEntry(f, next, true);
+}
+
+function switchKit(f, kitId) {
+  state.kits[f.key] = kitId;
+  // Carry the reading over so switching doesn't throw it away.
+  state.raw[f.key] = kitFromValue(activeKit(f), state.readings[f.key]);
+  state.readings[f.key] = kitToValue(activeKit(f), state.raw[f.key]);
+  save();
+  renderEntry(f);
   render();
 }
 
@@ -513,6 +672,15 @@ function render() {
     pill.className = "pill lv-" + r.level;
     card.querySelector("[data-msg]").textContent = r.msg;
 
+    const spec = entrySpec(f);
+    const convert = card.querySelector("[data-convert]");
+    const raw = entryValue(f);
+    const showConvert = spec.kit && spec.kit.method !== "direct" && spec.kit.method !== "pads" && raw !== null && state.readings[f.key] !== null;
+    convert.hidden = !showConvert;
+    if (showConvert) {
+      convert.textContent = `${fmtEntry(spec, raw)} ${spec.unit} = ${state.readings[f.key].toLocaleString()} ${f.unit}`;
+    }
+
     const bar = card.querySelector("[data-bar]");
     bar.innerHTML = zonesHtml(f);
     if (r.barValue !== null) {
@@ -524,9 +692,8 @@ function render() {
     card.querySelector("[data-smax]").textContent = fmt(f, f.scale[1]) + "+";
     card.querySelector("[data-slabel]").textContent = f.derived ? "combined" : "";
 
-    const cur = state.readings[f.key];
     card.querySelectorAll("[data-chip]").forEach(c =>
-      c.setAttribute("aria-pressed", String(cur !== null && Number(c.dataset.chip) === cur)));
+      c.setAttribute("aria-pressed", String(raw !== null && Number(c.dataset.chip) === raw)));
   });
 
   renderSummary(results);
@@ -565,15 +732,12 @@ function renderSummary(results) {
 
 // ---- Wiring -------------------------------------------------------------------
 function fillInputs() {
-  FIELDS.forEach(f => {
-    const v = state.readings[f.key];
-    document.getElementById("in-" + f.key).value = v === null ? "" : fmt(f, v);
-  });
+  FIELDS.forEach(renderEntry);
   document.getElementById("volume").value = state.volume ?? "";
 }
 
 function clearReadings() {
-  const keep = { poolType: state.poolType, volume: state.sample ? null : state.volume };
+  const keep = { poolType: state.poolType, kits: state.kits, volume: state.sample ? null : state.volume };
   state = Object.assign(blankState(), keep);
   save();
   fillInputs();
@@ -593,14 +757,13 @@ document.getElementById("volume").addEventListener("input", e => {
 document.getElementById("clear-sample").addEventListener("click", clearReadings);
 document.getElementById("clear-all").addEventListener("click", clearReadings);
 document.getElementById("load-sample").addEventListener("click", () => {
-  state = structuredClone(SAMPLE);
+  state = sampleState();
   save();
   fillInputs();
   render();
 });
 
 buildCards();
-fillInputs();
 render();
 </script>
 <!-- ARTIFACT-END -->

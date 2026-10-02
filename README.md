@@ -11,6 +11,20 @@ Open `index.html` in a browser. There's no build step. On a phone, use **Share �
 - Each reading shows a status (Very low → Ideal → Very high), a range bar and a plain-language explanation
 - A summary at the top lists what needs attention first
 - Readings are saved on the device (localStorage)
+- **Test kit choice for salt:** meter (ppm), drop kit (drops × ppm per drop) or color strip. Switching kits carries the reading over.
+
+## Adding a test kit brand
+
+Kits live in the `TEST_KITS` table in `index.html`. Each kit has a `method`:
+
+| Method | Person enters | Converted by |
+|---|---|---|
+| `direct` | ppm | nothing |
+| `drops` | number of drops | `drops × perDrop` |
+| `pads` | taps a color block | the block's ppm value |
+| `scale` | number on a titrator strip | the brand's `chart`, interpolated |
+
+Add a brand by copying an entry and filling in its values. A commented-out titrator example is included. The same kit entries will tell the photo reader what to look for later.
 
 ## Target ranges used
 

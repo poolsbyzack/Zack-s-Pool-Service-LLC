@@ -1,6 +1,6 @@
 # Pool Water Check
 
-A phone-friendly web app where pool owners enter their test strip or test kit results and see, reading by reading, whether their water is balanced.
+A phone-friendly web app for do-it-yourself pool owners (people who take care of their own pool, not service customers). They enter their test strip or test kit results and see, reading by reading, whether their water is balanced.
 
 Open `index.html` in a browser. There's no build step. On a phone, use **Share → Add to Home Screen** to get an app icon.
 
@@ -45,6 +45,6 @@ All ranges live in the `FIELDS` table at the top of the script in `index.html`, 
 1. ✅ Reading entry + status
 2. Dose calculator (how much of which product, based on pool size)
 3. Accounts + reading history
-4. Paid tier (Stripe) + free codes for service customers
+4. Paid tier (Stripe)
 5. Photo reading of test strips
 6. Starter kits / strips by mail

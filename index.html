@@ -45,6 +45,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0;
   background: var(--bg);
@@ -210,6 +211,38 @@ input[type="number"] {
 }
 .scale { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 .msg { margin: 0; }
+.muted { color: var(--muted); margin: 0; }
+.block { display: block; font-size: 0.9rem; }
+
+/* Treatment plan: numbered because the order chemicals go in matters */
+.section-title { font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; line-height: 1.1; margin: 0; }
+.plan-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+.step-item { display: grid; grid-template-columns: 32px 1fr; gap: 12px; }
+.step-num {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent); color: var(--accent-ink);
+  font-family: var(--font-display); font-weight: 700; font-size: 1.1rem;
+}
+.step-item.advice .step-num { background: transparent; color: var(--muted); border: 1.5px solid var(--line); }
+.step-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.step-title { font-family: var(--font-display); font-weight: 700; font-size: 1.25rem; line-height: 1.1; margin: 0; }
+.amount { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 1.6rem; line-height: 1.1; color: var(--accent); font-variant-numeric: tabular-nums; }
+.notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.safety { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 0.92rem; }
+
+/* Delivery order */
+.order-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.order-table td { padding: 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.order-table td.num { text-align: right; white-space: nowrap; padding-left: 12px; }
+.order-table tfoot td { border-bottom: 0; font-weight: 700; }
+.retest { display: flex; flex-direction: column; gap: 8px; border: 1.5px solid var(--warn); border-radius: 10px; padding: 12px; }
+.retest p { margin: 0; }
+.check { display: flex; gap: 10px; align-items: center; min-height: 44px; }
+.check input { width: 22px; height: 22px; accent-color: var(--accent); }
+.order-text { width: 100%; min-height: 140px; font: inherit; font-size: 0.9rem; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.toast { margin: 0; color: var(--ideal); font-weight: 700; }
 .kit { display: flex; flex-direction: column; gap: 6px; }
 .kit p { margin: 0; }
 .convert { margin: 0; text-align: center; font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; color: var(--accent); font-variant-numeric: tabular-nums; }
@@ -260,6 +293,34 @@ footer p { margin: 0 0 6px; }
   </section>
 
   <div id="cards" class="wrap" style="max-width:none"></div>
+
+  <section class="panel" aria-labelledby="plan-title">
+    <h2 class="section-title" id="plan-title">What to add</h2>
+    <ol class="plan-steps" id="plan-steps"></ol>
+    <span class="label">Safety</span>
+    <ul class="safety">
+      <li>Add one chemical at a time with the pump running. Never mix chemicals together.</li>
+      <li>Add chemicals to water, never water to chemicals.</li>
+      <li>Store acid and chlorine apart, out of reach of kids and pets.</li>
+      <li>Amounts are estimates. Retest after each step before adding more.</li>
+    </ul>
+  </section>
+
+  <section class="panel" id="order" aria-labelledby="order-title" hidden>
+    <h2 class="section-title" id="order-title">Delivered to your door</h2>
+    <p class="muted">Everything this plan calls for, rounded up to full packages.</p>
+    <table class="order-table" id="order-table"></table>
+    <p class="muted" id="price-note">Prices are confirmed when we schedule your delivery.</p>
+    <div class="retest" id="retest-box" hidden>
+      <p id="retest-text"></p>
+      <label class="check" for="retest-confirm"><input type="checkbox" id="retest-confirm"> I retested and got the same readings</label>
+    </div>
+    <button class="btn btn-primary" type="button" id="copy-order">Copy delivery request</button>
+    <p class="toast" id="copy-toast" hidden>Copied. Paste it into a text or email.</p>
+    <p class="muted" id="order-contact"></p>
+    <label class="label" for="order-text">Your request</label>
+    <textarea class="order-text" id="order-text" readonly></textarea>
+  </section>
 
   <div class="actions">
     <button class="btn" type="button" id="load-sample">Load sample</button>
@@ -464,6 +525,181 @@ function assess(field, value, state) {
   return { level, label, msg: prefix + msg, barValue: v };
 }
 
+// ---- Products & delivery ----------------------------------------------------
+// What we stock and deliver. Fill in `price` (per package, in dollars) to show
+// prices on the order. `rate` is how much it takes to move the reading in
+// 10,000 gallons, in the product's unit (fl oz or lb).
+const PRODUCTS = {
+  liquidChlorine: { name: "Liquid chlorine (10%)", unit: "floz", pkg: 128, pkgLabel: "1 gal jug", price: null,
+    rate: 12.8 },   // per 1 ppm free chlorine
+  calHypo: { name: "Shock, cal-hypo (65%)", unit: "lb", pkg: 1, pkgLabel: "1 lb bag", price: null,
+    rate: 0.128 },  // per 1 ppm free chlorine
+  muriatic: { name: "Muriatic acid (31.45%)", unit: "floz", pkg: 128, pkgLabel: "1 gal jug", price: null,
+    rate: 5.2 },    // per 0.1 pH drop, at alkalinity 100
+  sodaAsh: { name: "pH up (soda ash)", unit: "lb", pkg: 5, pkgLabel: "5 lb tub", price: null,
+    rate: 0.19 },   // per 0.1 pH rise, at alkalinity 100
+  bakingSoda: { name: "Alkalinity up (baking soda)", unit: "lb", pkg: 4, pkgLabel: "4 lb box", price: null,
+    rate: 0.14 },   // per 1 ppm alkalinity
+  calcium: { name: "Calcium up (calcium chloride)", unit: "lb", pkg: 8, pkgLabel: "8 lb tub", price: null,
+    rate: 0.099 },  // per 1 ppm calcium hardness
+  cya: { name: "Stabilizer (cyanuric acid)", unit: "lb", pkg: 4, pkgLabel: "4 lb tub", price: null,
+    rate: 0.083 },  // per 1 ppm CYA
+  salt: { name: "Pool salt", unit: "lb", pkg: 40, pkgLabel: "40 lb bag", price: null,
+    rate: 0.0835 }, // per 1 ppm salt
+};
+
+const DELIVERY = {
+  fee: null,          // dollars per delivery, or null to leave blank
+  contact: null,      // phone or email shown on the order, e.g. "(555) 555-0123"
+};
+
+// ---- Treatment plan ------------------------------------------------------------
+// Safety rules:
+//  - Big pH moves are split: add half, retest, then the rest.
+//  - Alkalinity and calcium are raised at most 40 / 100 ppm per day.
+//  - Readings marked "Very low/high" or "Check value" need a retest before ordering.
+//  - Readings that fail a check get no dose at all.
+const STEP_LIMITS = { phSplitAbove: 0.2, taPerDay: 40, chPerDay: 100, fcMax: 10 };
+
+function dose(productKey, change, gallons, factor = 1) {
+  return PRODUCTS[productKey].rate * change * (gallons / 10000) * factor;
+}
+
+function fmtAmount(productKey, amount) {
+  const p = PRODUCTS[productKey];
+  if (p.unit === "floz") {
+    const oz = Math.max(1, Math.round(amount));
+    return oz >= 64 ? `${(oz / 128).toFixed(1)} gal (${oz} fl oz)` : `${oz} fl oz`;
+  }
+  if (amount < 1) return `${Math.max(1, Math.round(amount * 16))} oz`;
+  return `${amount.toFixed(1)} lb`;
+}
+
+// Returns { needsVolume, steps, retest } from the current readings.
+// Each step: { id, title, product?, total?, first?, notes[], advice? }
+function planTreatment(st, levels) {
+  const g = st.volume;
+  if (!g || g < 500) return { needsVolume: true, steps: [], retest: [] };
+  const r = st.readings;
+  const usable = k => r[k] !== null && levels[k] && levels[k] !== "check" && levels[k] !== "empty" && levels[k] !== "info";
+  const salt = st.poolType === "salt";
+  const steps = [];
+  const retest = FIELDS.filter(f => levels[f.key] === "crit" || levels[f.key] === "check").map(f => f.name);
+  const taFactor = usable("ta") ? Math.max(r.ta, 50) / 100 : 1;
+  const taNote = usable("ta") ? null : "Estimated without an alkalinity reading.";
+
+  // 1. Alkalinity first: it changes how pH responds.
+  let raisingTa = false;
+  if (usable("ta") && r.ta < 80) {
+    raisingTa = true;
+    const change = 100 - r.ta;
+    const total = dose("bakingSoda", change, g);
+    const first = change > STEP_LIMITS.taPerDay ? dose("bakingSoda", STEP_LIMITS.taPerDay, g) : null;
+    steps.push({ id: "ta", title: "Raise alkalinity", product: "bakingSoda", total, first,
+      notes: ["Sprinkle across the deep end with the pump running.",
+        first ? "Add the first part today, retest tomorrow, then add the rest." : "Wait 6 hours, then retest pH."] });
+  } else if (usable("ta") && r.ta > 150) {
+    steps.push({ id: "ta", title: "Lower alkalinity slowly", advice: true,
+      notes: ["Bring pH down to 7.2 with acid, then aim jets and fountains at the surface to let it rise on its own. Repeat over several days.",
+        "Ask us if you'd like help with this one."] });
+  }
+
+  // 2. pH, aimed at 7.5.
+  if (usable("ph") && r.ph > 7.6) {
+    const change = r.ph - 7.5;
+    const total = dose("muriatic", change * 10, g, taFactor);
+    const first = change > STEP_LIMITS.phSplitAbove ? total / 2 : null;
+    steps.push({ id: "ph", title: "Lower pH", product: "muriatic", total, first,
+      notes: [first ? "Add half now. Retest after 4 hours with the pump running, then add the rest only if pH is still above 7.6." : "Retest after 4 hours with the pump running.",
+        "Pour slowly in front of a return jet. Wear gloves and eye protection.", taNote].filter(Boolean) });
+  } else if (usable("ph") && r.ph < 7.4) {
+    if (raisingTa) {
+      steps.push({ id: "ph", title: "Raise pH", advice: true,
+        notes: ["Baking soda will raise pH a little. Retest pH tomorrow before adding pH up."] });
+    } else {
+      const change = 7.5 - r.ph;
+      const total = dose("sodaAsh", change * 10, g, taFactor);
+      const first = change > STEP_LIMITS.phSplitAbove ? total / 2 : null;
+      steps.push({ id: "ph", title: "Raise pH", product: "sodaAsh", total, first,
+        notes: [first ? "Add half now. Retest after 4 hours, then add the rest only if pH is still below 7.4." : "Retest after 4 hours.",
+          "Dissolve in a bucket of pool water first. Adding it dry can cloud the water.", taNote].filter(Boolean) });
+    }
+  }
+
+  // 3. Calcium.
+  if (usable("ch") && r.ch < 200) {
+    const change = 250 - r.ch;
+    const total = dose("calcium", change, g);
+    const first = change > STEP_LIMITS.chPerDay ? dose("calcium", STEP_LIMITS.chPerDay, g) : null;
+    steps.push({ id: "ch", title: "Raise calcium", product: "calcium", total, first,
+      notes: ["Dissolve in a bucket of pool water first. It gets hot, so add it to water, never water to it.",
+        first ? "Add the first part today, the rest tomorrow." : null].filter(Boolean) });
+  } else if (usable("ch") && r.ch > 500) {
+    const pct = Math.round(((r.ch - 350) / r.ch) * 100);
+    steps.push({ id: "ch", title: "Calcium is high", advice: true,
+      notes: [`Replacing about ${pct}% of the water brings it back toward 350 ppm, if your fill water is low in calcium.`] });
+  }
+
+  // 4. Stabilizer.
+  const cyaTarget = salt ? 70 : 40;
+  const cyaBands = bandsFor(FIELDS.find(f => f.key === "cya"), st.poolType);
+  if (usable("cya") && r.cya < cyaBands[2]) {
+    steps.push({ id: "cya", title: "Raise stabilizer", product: "cya", total: dose("cya", cyaTarget - r.cya, g),
+      notes: ["Put it in a sock or mesh bag in the skimmer basket. It takes a few days to dissolve.",
+        "Don't backwash for a week."] });
+  } else if (usable("cya") && r.cya > cyaBands[4]) {
+    const pct = Math.round(((r.cya - cyaTarget) / r.cya) * 100);
+    steps.push({ id: "cya", title: "Stabilizer is high", advice: true,
+      notes: [`Only draining lowers it. Replacing about ${pct}% of the water brings it back to ${cyaTarget} ppm.`] });
+  }
+
+  // 5. Salt.
+  if (salt && usable("salt") && r.salt < 3000) {
+    steps.push({ id: "salt", title: "Add salt", product: "salt", total: dose("salt", 3200 - r.salt, g),
+      notes: ["Turn the salt cell off. Pour salt along the shallow end and brush it until it dissolves.",
+        "Turn the cell back on after 24 hours."] });
+  } else if (salt && usable("salt") && r.salt > 3800) {
+    const pct = Math.round(((r.salt - 3200) / r.salt) * 100);
+    steps.push({ id: "salt", title: "Salt is high", advice: true,
+      notes: [`Replacing about ${pct}% of the water brings it back to 3,200 ppm.`] });
+  }
+
+  // 6. Chlorine last, at least 30 minutes after any acid.
+  if (usable("fc")) {
+    const cc = usable("tc") ? Math.max(0, r.tc - r.fc) : 0;
+    const shock = cc >= 0.5;
+    const target = shock ? Math.min(STEP_LIMITS.fcMax, Math.max(5, r.fc + 10 * cc)) : 3;
+    const chlorineKey = st.chlorineProduct === "calHypo" ? "calHypo" : "liquidChlorine";
+    if (r.fc < target && (shock || r.fc < 2)) {
+      const notes = [];
+      if (steps.some(s => s.id === "ph" && !s.advice)) notes.push("Wait 30 minutes after the acid or pH up. Never mix chemicals together.");
+      notes.push(chlorineKey === "liquidChlorine" ? "Pour in front of a return jet with the pump running." : "Dissolve in a bucket of pool water first and pour around the edge. Best added at dusk.");
+      if (chlorineKey === "calHypo" && usable("ch") && r.ch > 400) notes.push("Cal-hypo adds calcium, which is already high. Liquid chlorine is the better choice.");
+      if (shock) notes.push("Keep swimmers out until free chlorine is below 10 ppm.");
+      steps.push({ id: "fc", title: shock ? `Shock to ${target.toFixed(0)} ppm` : "Raise chlorine to 3 ppm", product: chlorineKey,
+        total: dose(chlorineKey, target - r.fc, g), chlorinePicker: true, notes });
+    } else if (r.fc > 10) {
+      steps.push({ id: "fc", title: "Chlorine is high", advice: true,
+        notes: ["Don't add chlorine. Keep swimmers out until it drops below 10 ppm. Sun and time will bring it down."] });
+    }
+  }
+
+  return { needsVolume: false, steps, retest };
+}
+
+// Packages to deliver for the plan, one line per product.
+function buildOrder(plan) {
+  const lines = {};
+  plan.steps.filter(s => s.product).forEach(s => {
+    const p = PRODUCTS[s.product];
+    const qty = Math.max(1, Math.ceil(s.total / p.pkg - 0.05));
+    lines[s.product] = (lines[s.product] || 0) + qty;
+  });
+  return Object.entries(lines).map(([key, qty]) => ({ key, qty, product: PRODUCTS[key] }));
+}
+
+function money(n) { return "$" + n.toFixed(2); }
+
 // ---- State -----------------------------------------------------------------
 const STORE_KEY = "poolWaterCheck.v1";
 const SAMPLE = { poolType: "chlorine", volume: 15000, readings: { fc: 1, tc: 2, ph: 7.8, ta: 80, ch: 250, cya: 30, salt: null }, sample: true };
@@ -472,7 +708,7 @@ function blankState() {
   const readings = {};
   FIELDS.forEach(f => readings[f.key] = null);
   // kits: which test kit each field uses. raw: what was entered on that kit.
-  return { poolType: "chlorine", volume: null, readings, kits: {}, raw: {}, sample: false };
+  return { poolType: "chlorine", volume: null, readings, kits: {}, raw: {}, chlorineProduct: "liquidChlorine", retested: false, sample: false };
 }
 
 function sampleState() {
@@ -615,6 +851,7 @@ function setEntry(f, raw, syncInput) {
     state.readings[f.key] = raw;
   }
   if (state.sample) state.sample = false;
+  state.retested = false;
   if (syncInput) {
     const spec = entrySpec(f);
     document.getElementById("in-" + f.key).value = raw === null ? "" : fmtEntry(spec, raw);
@@ -697,6 +934,9 @@ function render() {
   });
 
   renderSummary(results);
+  const levels = {};
+  results.forEach(({ f, r }) => levels[f.key] = r.level);
+  renderPlan(levels);
 
   document.querySelectorAll("[data-type]").forEach(btn =>
     btn.setAttribute("aria-pressed", String(btn.dataset.type === state.poolType)));
@@ -730,6 +970,85 @@ function renderSummary(results) {
     : (tested.length ? `<li>Everything you tested is in the ideal range.</li>` : `<li>Start with free chlorine and pH. Those matter most day to day.</li>`);
 }
 
+// ---- Plan & order rendering --------------------------------------------------
+function renderPlan(levels) {
+  const plan = planTreatment(state, levels);
+  const planEl = document.getElementById("plan-steps");
+  const orderSection = document.getElementById("order");
+  const tested = Object.values(levels).some(l => l !== "empty" && l !== "info");
+
+  if (plan.needsVolume) {
+    planEl.innerHTML = `<p class="muted">Enter your pool size above to see how much to add.</p>`;
+    orderSection.hidden = true;
+    return;
+  }
+  if (!plan.steps.length) {
+    planEl.innerHTML = `<p class="muted">${tested ? "Nothing to add right now. Test again in 2–3 days." : "Enter your readings to get a plan."}</p>`;
+    orderSection.hidden = true;
+    return;
+  }
+
+  planEl.innerHTML = plan.steps.map((s, i) => {
+    const p = s.product ? PRODUCTS[s.product] : null;
+    const picker = s.chlorinePicker ? `
+        <div class="seg" role="group" aria-label="Chlorine product">
+          <button type="button" id="cl-liquid" data-chlorine="liquidChlorine" aria-pressed="${s.product === "liquidChlorine"}">Liquid</button>
+          <button type="button" id="cl-calhypo" data-chlorine="calHypo" aria-pressed="${s.product === "calHypo"}">Shock bags</button>
+        </div>` : "";
+    const amount = p ? `
+        <p class="amount">${s.first ? "Add " + fmtAmount(s.product, s.first) + " now" : "Add " + fmtAmount(s.product, s.total)}</p>
+        ${s.first ? `<p class="muted">${fmtAmount(s.product, s.total)} in total</p>` : ""}` : "";
+    return `
+      <li class="step-item${s.advice ? " advice" : ""}">
+        <span class="step-num" aria-hidden="true">${i + 1}</span>
+        <div class="step-body">
+          <h3 class="step-title">${s.title}</h3>
+          ${p ? `<p class="muted">${p.name}</p>` : ""}
+          ${picker}
+          ${amount}
+          <ul class="notes">${s.notes.map(n => `<li>${n}</li>`).join("")}</ul>
+        </div>
+      </li>`;
+  }).join("");
+
+  const order = buildOrder(plan);
+  orderSection.hidden = order.length === 0;
+  if (!order.length) return;
+
+  const allPriced = order.every(o => o.product.price !== null) && DELIVERY.fee !== null;
+  const rows = order.map(o => `
+      <tr><td>${o.product.name}<span class="muted block">${o.qty} × ${o.product.pkgLabel}</span></td>
+          <td class="num">${o.product.price !== null ? money(o.product.price * o.qty) : "—"}</td></tr>`).join("");
+  const total = allPriced ? order.reduce((a, o) => a + o.product.price * o.qty, 0) + DELIVERY.fee : null;
+  document.getElementById("order-table").innerHTML = `
+      <tbody>${rows}
+        <tr><td>Delivery</td><td class="num">${DELIVERY.fee !== null ? money(DELIVERY.fee) : "—"}</td></tr>
+      </tbody>
+      <tfoot><tr><td>Total</td><td class="num">${total !== null ? money(total) : "—"}</td></tr></tfoot>`;
+  document.getElementById("price-note").hidden = total !== null;
+
+  const needsRetest = plan.retest.length > 0;
+  const retestBox = document.getElementById("retest-box");
+  retestBox.hidden = !needsRetest;
+  if (needsRetest) {
+    document.getElementById("retest-text").textContent =
+      `${plan.retest.join(", ")} ${plan.retest.length === 1 ? "is" : "are"} far out of range. Test again to make sure before ordering.`;
+  }
+  const confirm = document.getElementById("retest-confirm");
+  confirm.checked = !!state.retested;
+  document.getElementById("copy-order").disabled = needsRetest && !state.retested;
+
+  const lines = order.map(o => `- ${o.qty} × ${o.product.name} (${o.product.pkgLabel})`);
+  const readings = FIELDS.filter(f => levels[f.key] && levels[f.key] !== "empty" && levels[f.key] !== "info" && !(f.saltOnly && state.poolType !== "salt"))
+    .map(f => `${f.name} ${fmt(f, state.readings[f.key])}`).join(", ");
+  document.getElementById("order-text").value =
+    `Delivery request\nPool: ${Number(state.volume).toLocaleString()} gal, ${state.poolType === "salt" ? "saltwater" : "chlorine"}\n` +
+    `Readings: ${readings}\n\n${lines.join("\n")}`;
+  document.getElementById("order-contact").textContent = DELIVERY.contact
+    ? `Send it to ${DELIVERY.contact} and we'll confirm your delivery day.`
+    : "Send it to us by text or email and we'll confirm your delivery day.";
+}
+
 // ---- Wiring -------------------------------------------------------------------
 function fillInputs() {
   FIELDS.forEach(renderEntry);
@@ -737,7 +1056,7 @@ function fillInputs() {
 }
 
 function clearReadings() {
-  const keep = { poolType: state.poolType, kits: state.kits, volume: state.sample ? null : state.volume };
+  const keep = { poolType: state.poolType, kits: state.kits, chlorineProduct: state.chlorineProduct, volume: state.sample ? null : state.volume };
   state = Object.assign(blankState(), keep);
   save();
   fillInputs();
@@ -753,6 +1072,29 @@ document.getElementById("volume").addEventListener("input", e => {
   const v = Number(e.target.value);
   state.volume = e.target.value.trim() === "" || !Number.isFinite(v) ? null : v;
   save();
+  render();
+});
+document.getElementById("plan-steps").addEventListener("click", e => {
+  const b = e.target.closest("[data-chlorine]");
+  if (!b) return;
+  state.chlorineProduct = b.dataset.chlorine;
+  save();
+  render();
+});
+document.getElementById("retest-confirm").addEventListener("change", e => {
+  state.retested = e.target.checked;
+  save();
+  render();
+});
+document.getElementById("copy-order").addEventListener("click", () => {
+  const text = document.getElementById("order-text");
+  const toast = document.getElementById("copy-toast");
+  const done = () => { toast.hidden = false; setTimeout(() => { toast.hidden = true; }, 3000); };
+  try {
+    navigator.clipboard.writeText(text.value).then(done, () => { text.focus(); text.select(); });
+  } catch (err) {
+    text.focus(); text.select();
+  }
 });
 document.getElementById("clear-sample").addEventListener("click", clearReadings);
 document.getElementById("clear-all").addEventListener("click", clearReadings);

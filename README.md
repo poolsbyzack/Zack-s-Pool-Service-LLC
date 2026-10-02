@@ -13,6 +13,22 @@ Open `index.html` in a browser. There's no build step. On a phone, use **Share �
 - Readings are saved on the device (localStorage)
 - **Test kit choice for salt:** meter (ppm), drop kit (drops × ppm per drop) or color strip. Switching kits carries the reading over.
 
+- **What to add:** a numbered treatment plan in the order chemicals should go in (alkalinity → pH → calcium → stabilizer → salt → chlorine), with amounts for the pool's size
+- **Delivery request:** the plan rounded up to full packages, with prices once they're set, and a copyable request the customer texts or emails
+
+## Safety rules in the plan
+
+- pH moves bigger than 0.2 are split: add half, retest after 4 hours, then the rest only if still needed
+- Alkalinity is raised at most 40 ppm a day and calcium at most 100 ppm a day
+- Chlorine is never pushed above 10 ppm, and goes in at least 30 minutes after acid or pH up
+- A reading that fails a check gets no dose. A reading that's very low or very high locks the delivery button until the customer confirms they retested
+- High alkalinity, calcium, stabilizer and salt get advice (aeration or partial drain), not a product
+- Amounts are estimates from standard dosing rates; every step says to retest
+
+## Setting products and prices
+
+`PRODUCTS` in `index.html` lists each product, its package size and its dosing rate. Set `price` per package and `DELIVERY.fee` / `DELIVERY.contact` to show prices and your contact on the order.
+
 ## Adding a test kit brand
 
 Kits live in the `TEST_KITS` table in `index.html`. Each kit has a `method`:
@@ -43,7 +59,7 @@ All ranges live in the `FIELDS` table at the top of the script in `index.html`, 
 ## Roadmap
 
 1. ✅ Reading entry + status
-2. Dose calculator (how much of which product, based on pool size)
+2. ✅ Dose calculator + delivery request (manual: customer sends it, you confirm)
 3. Accounts + reading history
 4. Paid tier (Stripe)
 5. Photo reading of test strips

@@ -245,6 +245,20 @@ input[type="number"] {
 .order-text { width: 100%; min-height: 140px; font: inherit; font-size: 0.9rem; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .toast { margin: 0; color: var(--ideal); font-weight: 700; }
+
+/* Save + recent tests */
+.save-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.save-row .btn { flex: 0 0 auto; }
+.save-row .muted { flex: 1 1 160px; min-width: 0; }
+.jump { margin: 0; padding: 10px 12px; border-left: 4px solid var(--warn); background: var(--bg); border-radius: 0 10px 10px 0; }
+.history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.history-item { padding: 10px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.history-item:last-child { border-bottom: 0; }
+.history-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.history-head .link-btn { margin-left: auto; }
+.history-vals { display: flex; flex-wrap: wrap; gap: 4px 14px; font-variant-numeric: tabular-nums; }
+.hv .muted { font-size: 0.85rem; }
+.link-btn { min-height: 32px; padding: 0 4px; color: var(--accent); text-decoration: underline; font-size: 0.9rem; }
 .kit { display: flex; flex-direction: column; gap: 6px; }
 .kit p { margin: 0; }
 .convert { margin: 0; text-align: center; font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; color: var(--accent); font-variant-numeric: tabular-nums; }
@@ -275,6 +289,10 @@ footer p { margin: 0 0 6px; }
       <div class="tally" id="tally"></div>
     </div>
     <ul class="issues" id="issues"></ul>
+    <div class="save-row">
+      <button class="btn btn-primary" type="button" id="save-test">Save this test</button>
+      <span class="muted" id="save-status"></span>
+    </div>
   </section>
 
   <section class="panel" aria-labelledby="setup-title">
@@ -322,6 +340,12 @@ footer p { margin: 0 0 6px; }
     <p class="muted" id="order-contact"></p>
     <label class="label" for="order-text">Your request</label>
     <textarea class="order-text" id="order-text" readonly></textarea>
+  </section>
+
+  <section class="panel" id="history" aria-labelledby="history-title" hidden>
+    <h2 class="section-title" id="history-title">Recent tests</h2>
+    <p class="muted" id="history-note"></p>
+    <ul class="history-list" id="history-list"></ul>
   </section>
 
   <div class="actions">
@@ -703,7 +727,7 @@ function blankState() {
   const readings = {};
   FIELDS.forEach(f => readings[f.key] = null);
   // kits: which test kit each field uses. raw: what was entered on that kit.
-  return { poolType: "chlorine", volume: null, readings, kits: {}, raw: {}, chlorineProduct: "liquidChlorine", retested: false, sample: false };
+  return { poolType: "chlorine", volume: null, readings, kits: {}, raw: {}, chlorineProduct: "liquidChlorine", retested: false, history: [], savedAt: null, sample: false };
 }
 
 function sampleState() {
@@ -799,6 +823,7 @@ function buildCards() {
         <div class="scale"><span data-smin></span><span data-slabel></span><span data-smax></span></div>
       </div>
       <p class="msg" data-msg></p>
+      <p class="jump" data-jump hidden></p>
     </section>`).join("");
 
   FIELDS.forEach(f => {
@@ -870,6 +895,7 @@ function setEntry(f, raw, syncInput) {
   }
   if (state.sample) state.sample = false;
   state.retested = false;
+  state.savedAt = null;
   if (syncInput) {
     const spec = entrySpec(f);
     document.getElementById("in-" + f.key).value = raw === null ? "" : fmtEntry(spec, raw);
@@ -952,17 +978,24 @@ function render() {
       c.setAttribute("aria-pressed", String(raw !== null && Number(c.dataset.chip) === raw)));
   });
 
-  renderSummary(results);
   const levels = {};
   results.forEach(({ f, r }) => levels[f.key] = r.level);
-  renderPlan(levels);
+  const jumps = findJumps(levels);
+  results.forEach(({ f }) => {
+    const el = document.getElementById("card-" + f.key).querySelector("[data-jump]");
+    el.hidden = !jumps[f.key];
+    el.textContent = jumps[f.key] ? jumpText(f, jumps[f.key]) : "";
+  });
+  renderSummary(results, jumps);
+  renderPlan(levels, jumps);
+  renderHistory();
 
   document.querySelectorAll("[data-type]").forEach(btn =>
     btn.setAttribute("aria-pressed", String(btn.dataset.type === state.poolType)));
   document.getElementById("sample-notice").hidden = !state.sample;
 }
 
-function renderSummary(results) {
+function renderSummary(results, jumps) {
   const tested = results.filter(x => x.r.level !== "empty" && x.r.level !== "info");
   const problems = tested
     .filter(x => LEVEL_RANK[x.r.level] >= 3)
@@ -983,14 +1016,121 @@ function renderSummary(results) {
   document.getElementById("tally").innerHTML = tally.join("");
 
   const list = problems.concat(near);
-  document.getElementById("issues").innerHTML = list.length
+  const jumpItems = results.filter(({ f }) => jumps[f.key]).map(({ f }) =>
+    `<li><span class="dot bg-warn"></span><span><strong>Retest ${f.name.toLowerCase()}.</strong> ${jumpText(f, jumps[f.key])}</span></li>`);
+  document.getElementById("issues").innerHTML = jumpItems.join("") + (list.length
     ? list.map(({ f, r }) =>
         `<li><span class="dot bg-${r.level}"></span><span><strong>${f.name}: ${r.label.toLowerCase()}.</strong> ${r.msg}</span></li>`).join("")
-    : (tested.length ? `<li>Everything you tested is in the ideal range.</li>` : `<li>Start with free chlorine and pH. Those matter most day to day.</li>`);
+    : (jumpItems.length ? "" : tested.length ? `<li>Everything you tested is in the ideal range.</li>` : `<li>Start with free chlorine and pH. Those matter most day to day.</li>`));
+}
+
+// ---- Saved tests & big-jump check ----------------------------------------------
+// Basic keeps the last few tests on the phone. Premium will keep the whole season.
+const HISTORY_LIMIT = 5;
+
+// How much a reading can believably change between tests. A bigger change is
+// more likely a misread strip or a typo, so we ask for a retest. Chlorine is
+// left out because it really does swing fast (sun, rain, shocking).
+const JUMP_LIMITS = { ph: 0.6, ta: 40, ch: 150, cya: 30, salt: 800 };
+const JUMP_WINDOW_DAYS = 30;
+const SHORT_NAMES = { fc: "FC", tc: "TC", ph: "pH", ta: "TA", ch: "CH", cya: "CYA", salt: "Salt" };
+
+function hasReadings(st) {
+  return FIELDS.some(f => st.readings[f.key] !== null && !(f.saltOnly && st.poolType !== "salt"));
+}
+
+function saveTest() {
+  if (state.sample || !hasReadings(state)) return;
+  const entry = {
+    at: new Date().toISOString(),
+    poolType: state.poolType,
+    volume: state.volume,
+    readings: Object.assign({}, state.readings),
+  };
+  state.history = [entry].concat(state.history || []).slice(0, HISTORY_LIMIT);
+  state.savedAt = entry.at;
+  save();
+}
+
+function deleteTest(at) {
+  state.history = (state.history || []).filter(h => h.at !== at);
+  if (state.savedAt === at) state.savedAt = null;
+  save();
+  render();
+}
+
+// Saved tests to compare against: recent ones other than the current readings,
+// for the same kind of pool, newest first.
+function earlierTests() {
+  return (state.history || []).filter(h =>
+    h.at !== state.savedAt &&
+    h.poolType === state.poolType &&
+    (Date.now() - new Date(h.at).getTime()) / 86400000 <= JUMP_WINDOW_DAYS);
+}
+
+// { fieldKey: { from, to, when } } for readings that moved more than believable,
+// each compared with the last test that included that reading.
+function findJumps(levels) {
+  const tests = earlierTests();
+  const jumps = {};
+  Object.entries(JUMP_LIMITS).forEach(([key, limit]) => {
+    const now = state.readings[key];
+    if (now === null || levels[key] === undefined || ["check", "empty", "info"].includes(levels[key])) return;
+    const prev = tests.find(h => h.readings[key] !== null && h.readings[key] !== undefined);
+    if (prev && Math.abs(now - prev.readings[key]) > limit) jumps[key] = { from: prev.readings[key], to: now, when: prev.at };
+  });
+  return jumps;
+}
+
+function whenText(iso) {
+  const d = new Date(iso);
+  const days = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 86400000);
+  if (days <= 0) return "earlier today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return "on " + d.toLocaleDateString(undefined, { weekday: "long" });
+  return "on " + d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function jumpText(f, j) {
+  const dir = j.to > j.from ? "jumped" : "dropped";
+  return `${f.name} ${dir} from ${fmt(f, j.from)} to ${fmt(f, j.to)} since your test ${whenText(j.when)}. ` +
+    `That's a bigger change than usual. Retest to make sure, unless you added something that would explain it.`;
+}
+
+function renderHistory() {
+  const list = state.history || [];
+  const btn = document.getElementById("save-test");
+  const status = document.getElementById("save-status");
+  const canSave = !state.sample && hasReadings(state);
+  btn.disabled = !canSave || !!state.savedAt;
+  btn.textContent = state.savedAt ? "Saved" : "Save this test";
+  status.textContent = state.sample
+    ? "Enter your own readings to save a test."
+    : state.savedAt ? `Saved ${new Date(state.savedAt).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}.`
+    : canSave ? "Save it to compare with your next test." : "";
+
+  const panel = document.getElementById("history");
+  panel.hidden = list.length === 0;
+  document.getElementById("history-note").textContent =
+    `Your last ${HISTORY_LIMIT} tests are kept on this phone.`;
+  document.getElementById("history-list").innerHTML = list.map(h => {
+    const vals = FIELDS.filter(f => h.readings[f.key] !== null && h.readings[f.key] !== undefined && !(f.saltOnly && h.poolType !== "salt"))
+      .map(f => `<span class="hv"><span class="muted">${SHORT_NAMES[f.key]}</span> ${fmt(f, h.readings[f.key])}</span>`).join("");
+    const d = new Date(h.at);
+    return `
+      <li class="history-item">
+        <div class="history-head">
+          <strong>${d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</strong>
+          <span class="muted">${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}${h.at === state.savedAt ? " · current" : ""}</span>
+          <button type="button" class="link-btn" data-delete="${h.at}" aria-label="Delete test from ${d.toLocaleString()}">Delete</button>
+        </div>
+        <div class="history-vals">${vals}</div>
+      </li>`;
+  }).join("");
 }
 
 // ---- Plan & order rendering --------------------------------------------------
-function renderPlan(levels) {
+function renderPlan(levels, jumps) {
   const plan = planTreatment(state, levels);
   const planEl = document.getElementById("plan-steps");
   const orderSection = document.getElementById("order");
@@ -1046,12 +1186,15 @@ function renderPlan(levels) {
       <tfoot><tr><td>Total</td><td class="num">${total !== null ? money(total) : "—"}</td></tr></tfoot>`;
   document.getElementById("price-note").hidden = total !== null;
 
-  const needsRetest = plan.retest.length > 0;
+  const jumped = FIELDS.filter(f => jumps[f.key]).map(f => f.name);
+  const needsRetest = plan.retest.length > 0 || jumped.length > 0;
   const retestBox = document.getElementById("retest-box");
   retestBox.hidden = !needsRetest;
   if (needsRetest) {
-    document.getElementById("retest-text").textContent =
-      `${plan.retest.join(", ")} ${plan.retest.length === 1 ? "is" : "are"} far out of range. Test again to make sure before ordering.`;
+    const parts = [];
+    if (plan.retest.length) parts.push(`${plan.retest.join(", ")} ${plan.retest.length === 1 ? "is" : "are"} far out of range.`);
+    if (jumped.length) parts.push(`${jumped.join(", ")} changed a lot since your last test.`);
+    document.getElementById("retest-text").textContent = parts.join(" ") + " Test again to make sure before ordering.";
   }
   const confirm = document.getElementById("retest-confirm");
   confirm.checked = !!state.retested;
@@ -1075,7 +1218,7 @@ function fillInputs() {
 }
 
 function clearReadings() {
-  const keep = { poolType: state.poolType, kits: state.kits, chlorineProduct: state.chlorineProduct, volume: state.sample ? null : state.volume };
+  const keep = { poolType: state.poolType, kits: state.kits, chlorineProduct: state.chlorineProduct, history: state.history, volume: state.sample ? null : state.volume };
   state = Object.assign(blankState(), keep);
   save();
   fillInputs();
@@ -1084,6 +1227,7 @@ function clearReadings() {
 
 document.querySelectorAll("[data-type]").forEach(btn => btn.addEventListener("click", () => {
   state.poolType = btn.dataset.type;
+  state.savedAt = null;
   save();
   render();
 }));
@@ -1109,16 +1253,26 @@ document.getElementById("copy-order").addEventListener("click", () => {
   const text = document.getElementById("order-text");
   const toast = document.getElementById("copy-toast");
   const done = () => { toast.hidden = false; setTimeout(() => { toast.hidden = true; }, 3000); };
+  // An order is based on these readings, so keep them.
+  if (!state.savedAt) { saveTest(); render(); }
   try {
     navigator.clipboard.writeText(text.value).then(done, () => { text.focus(); text.select(); });
   } catch (err) {
     text.focus(); text.select();
   }
 });
+document.getElementById("save-test").addEventListener("click", () => {
+  saveTest();
+  render();
+});
+document.getElementById("history-list").addEventListener("click", e => {
+  const b = e.target.closest("[data-delete]");
+  if (b) deleteTest(b.dataset.delete);
+});
 document.getElementById("clear-sample").addEventListener("click", clearReadings);
 document.getElementById("clear-all").addEventListener("click", clearReadings);
 document.getElementById("load-sample").addEventListener("click", () => {
-  state = sampleState();
+  state = Object.assign(sampleState(), { history: state.history });
   save();
   fillInputs();
   render();

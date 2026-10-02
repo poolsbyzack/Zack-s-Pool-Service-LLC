@@ -16,6 +16,9 @@ Open `index.html` in a browser. There's no build step. On a phone, use **Share �
 - **What to add:** a numbered treatment plan in the order chemicals should go in (alkalinity → pH → calcium → stabilizer → salt → chlorine), with amounts for the pool's size
 - **Delivery request:** the plan rounded up to full packages, with prices once they're set, and a copyable request the customer texts or emails
 
+- **Save this test:** keeps the last 5 tests on the phone, listed under Recent tests (each can be deleted). Copying a delivery request saves the test automatically
+- **Big-jump check:** each reading is compared with the last saved test that included it (within 30 days). A change bigger than water usually makes on its own (pH 0.6, alkalinity 40, calcium 150, stabilizer 30, salt 800 ppm) shows a retest note and locks the delivery button until the customer confirms the retest. Chlorine is left out because it really does swing fast
+
 ## Safety rules in the plan
 
 - pH moves bigger than 0.2 are split: add half, retest after 4 hours, then the rest only if still needed

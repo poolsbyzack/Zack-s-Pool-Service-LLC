@@ -751,7 +751,7 @@ function blankState() {
   FIELDS.forEach(f => readings[f.key] = null);
   // kits: which test kit each field uses. raw: what was entered on that kit.
   return { poolType: "chlorine", volume: null, readings, kits: {}, raw: {}, chlorineProduct: "liquidChlorine", retested: false, history: [], savedAt: null,
-    membership: blankMembership(), stripsLeft: null, addStrips: false, ownerPreview: false, sample: false };
+    membership: blankMembership(), stripsLeft: null, bottleOpened: null, stripRefill: true, addStrips: false, ownerPreview: false, sample: false };
 }
 
 function sampleState() {
@@ -1168,8 +1168,10 @@ function renderHistory() {
 const PREMIUM = {
   price: 4.99, period: "month", trialDays: 14,
   basicHistory: 5,     // tests Basic shows; everything is kept so upgrading reveals the season
-  refillAt: 10,        // strips left when Premium adds a bottle to the next delivery
+  refillAt: 10,        // strips left when Premium adds a bottle to the next delivery...
+  refillDays: 10,      // ...or when they're expected to run out within this many days
   bottleSize: 50,
+  stripFreshMonths: 6, // suggest a fresh bottle after this long; set from the chosen brand's label
   reminderDays: 3,     // days before the trial ends that the reminder shows
 };
 const PREMIUM_FEATURES = [
@@ -1205,6 +1207,54 @@ function shortDate(iso) {
 
 function escapeHtml(t) {
   return String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+// ---- Test strip refills ----
+// Tests per day, from how often saved tests happen (needs at least 2 recent tests).
+function testsPerDay() {
+  const recent = (state.history || []).slice(0, 10).map(h => new Date(h.at).getTime());
+  if (recent.length < 2) return null;
+  const spanDays = (recent[0] - recent[recent.length - 1]) / 86400000;
+  return spanDays >= 1 ? (recent.length - 1) / spanDays : null;
+}
+
+function stripsRunOut() {
+  const rate = testsPerDay();
+  if (state.stripsLeft === null || !rate) return null;
+  return new Date(Date.now() + (state.stripsLeft / rate) * 86400000);
+}
+
+function bottleMonthsOld() {
+  if (!state.bottleOpened) return null;
+  return (Date.now() - new Date(state.bottleOpened).getTime()) / (30.4 * 86400000);
+}
+
+// Premium with refills on: add a bottle when low or about to run out.
+function stripRefillDue() {
+  if (!isPremium() || !state.stripRefill || state.stripsLeft === null) return false;
+  if (state.stripsLeft <= PREMIUM.refillAt) return true;
+  const out = stripsRunOut();
+  return !!out && (out - Date.now()) / 86400000 <= PREMIUM.refillDays;
+}
+
+function stripsHtml() {
+  if (state.stripsLeft === null) {
+    return `<p class="muted">Tap the button when you open a bottle. Each saved test counts as one strip.</p>
+      <button class="btn" type="button" data-action="new-bottle">I opened a new bottle (${PREMIUM.bottleSize})</button>`;
+  }
+  const out = stripsRunOut();
+  const age = bottleMonthsOld();
+  const lines = [`<p><strong>${state.stripsLeft}</strong> of ${PREMIUM.bottleSize} strips left${out ? `, enough until about ${shortDate(out.toISOString())}` : ""}.</p>`];
+  if (stripRefillDue()) lines.push(`<p class="trial-reminder">A new bottle is on your next delivery.</p>`);
+  if (age !== null && age >= PREMIUM.stripFreshMonths) {
+    lines.push(`<p class="trial-reminder">This bottle was opened ${Math.floor(age)} months ago. Older strips read less accurately, so check the date on the bottle.</p>`);
+  }
+  lines.push(`<label class="check" for="strip-auto"><input type="checkbox" id="strip-auto"${state.stripRefill ? " checked" : ""}> Refill automatically before I run out</label>`);
+  lines.push(`<div class="actions">
+      <button class="btn" type="button" data-action="new-bottle">I opened a new bottle</button>
+      <button class="btn" type="button" data-action="add-bottle"${state.addStrips || stripRefillDue() ? " disabled" : ""}>${state.addStrips || stripRefillDue() ? "Bottle on next delivery" : "Add a bottle now"}</button>
+    </div>`);
+  return lines.join("");
 }
 
 const premiumUi = { form: false, confirmCancel: false, error: "" };
@@ -1262,9 +1312,7 @@ function renderPremium() {
     const planLine = status === "trial"
       ? `Free until ${shortDate(m.trialEnds)}, then ${price}.`
       : status === "premium" ? `${price}. Renews automatically.` : "Owner preview. Nobody is charged.";
-    const strips = state.stripsLeft === null
-      ? `<p class="muted">Tell us when you open a bottle and we'll count strips as you save tests.</p>`
-      : `<p><strong>${state.stripsLeft}</strong> test strips left${state.stripsLeft <= PREMIUM.refillAt ? ". A new bottle is on your next delivery." : "."}</p>`;
+    const strips = stripsHtml();
     const cancel = status === "basic" ? "" : premiumUi.confirmCancel
       ? `<div class="retest">
           <p>${status === "trial" ? "Cancel your trial? You'll go back to Basic and won't be charged." : "Cancel Premium? You'll go back to Basic and won't be charged again."}</p>
@@ -1280,7 +1328,6 @@ function renderPremium() {
       ${reminder}
       <span class="label">Test strips</span>
       ${strips}
-      <button class="btn" type="button" data-action="new-bottle">I opened a new bottle (${PREMIUM.bottleSize})</button>
       ${features}
       ${cancel}`;
   }
@@ -1323,7 +1370,12 @@ function premiumAction(action) {
     state.membership.status = "basic";
     state.membership.trialEnds = null;
   }
-  if (action === "new-bottle") state.stripsLeft = PREMIUM.bottleSize;
+  if (action === "new-bottle") {
+    state.stripsLeft = PREMIUM.bottleSize;
+    state.bottleOpened = new Date().toISOString();
+    state.addStrips = false;
+  }
+  if (action === "add-bottle") state.addStrips = true;
   save();
   renderPremium();
   render();
@@ -1364,13 +1416,13 @@ function renderPlan(levels, jumps) {
   }).join("");
 
   // Test strips: anyone can add a bottle; Premium adds one when they're running low.
-  const autoStrips = isPremium() && state.stripsLeft !== null && state.stripsLeft <= PREMIUM.refillAt;
+  const autoStrips = stripRefillDue();
   const stripsBox = document.getElementById("add-strips");
   stripsBox.checked = autoStrips || !!state.addStrips;
   stripsBox.disabled = autoStrips;
   document.getElementById("strips-note").textContent = autoStrips
     ? `Added automatically: you're down to ${state.stripsLeft} strips.`
-    : isPremium() ? "Premium adds a bottle automatically when you're low." : "";
+    : isPremium() && state.stripRefill ? "Premium adds a bottle automatically before you run out." : "";
   const extras = stripsBox.checked ? { strips: 1 } : {};
   const order = buildOrder(plan.needsVolume ? { steps: [] } : plan, extras);
   orderSection.hidden = order.length === 0 && !tested;
@@ -1425,7 +1477,7 @@ function fillInputs() {
 
 function clearReadings() {
   const keep = { poolType: state.poolType, kits: state.kits, chlorineProduct: state.chlorineProduct, history: state.history,
-    membership: state.membership, stripsLeft: state.stripsLeft, ownerPreview: state.ownerPreview, volume: state.sample ? null : state.volume };
+    membership: state.membership, stripsLeft: state.stripsLeft, bottleOpened: state.bottleOpened, stripRefill: state.stripRefill, addStrips: state.addStrips, ownerPreview: state.ownerPreview, volume: state.sample ? null : state.volume };
   state = Object.assign(blankState(), keep);
   save();
   fillInputs();
@@ -1477,6 +1529,13 @@ document.getElementById("premium-body").addEventListener("click", e => {
   const b = e.target.closest("[data-action]");
   if (b) premiumAction(b.dataset.action);
 });
+document.getElementById("premium-body").addEventListener("change", e => {
+  if (e.target.id !== "strip-auto") return;
+  state.stripRefill = e.target.checked;
+  save();
+  renderPremium();
+  render();
+});
 document.getElementById("premium-body").addEventListener("submit", e => {
   e.preventDefault();
   startTrial(e.target);
@@ -1499,7 +1558,7 @@ document.getElementById("history-list").addEventListener("click", e => {
 document.getElementById("clear-sample").addEventListener("click", clearReadings);
 document.getElementById("clear-all").addEventListener("click", clearReadings);
 document.getElementById("load-sample").addEventListener("click", () => {
-  state = Object.assign(sampleState(), { history: state.history, membership: state.membership, stripsLeft: state.stripsLeft, ownerPreview: state.ownerPreview });
+  state = Object.assign(sampleState(), { history: state.history, membership: state.membership, stripsLeft: state.stripsLeft, bottleOpened: state.bottleOpened, stripRefill: state.stripRefill, addStrips: state.addStrips, ownerPreview: state.ownerPreview });
   save();
   fillInputs();
   render();
